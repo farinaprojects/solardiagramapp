@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import br.com.solardiagram.domain.electrical.ElectricalCircuitAnalyzer
 import br.com.solardiagram.domain.electrical.ElectricalGraphBuilder
+import br.com.solardiagram.domain.electrical.ElectricalHighlightEngine
 import br.com.solardiagram.domain.electrical.ElectricalPathFinder
 import br.com.solardiagram.ui.viewmodel.CanvasHighlights
 import br.com.solardiagram.ui.viewmodel.EditorHostViewModel
@@ -181,6 +182,45 @@ fun EditorHostScreen(
                     "circuitEdge[$edgeIndex] ${edge.fromComponentId}:${edge.fromPortId} -> ${edge.toComponentId}:${edge.toPortId}"
                 )
             }
+        }
+
+        val highlightTarget = project.components.firstOrNull {
+            val n = it.name.uppercase()
+            n.contains("MICRO")
+        } ?: project.components.first()
+
+        val highlight = ElectricalHighlightEngine.highlightForComponent(
+            circuits = circuits,
+            selectedComponentId = highlightTarget.id
+        )
+
+        Log.d(
+            "ElectricalTest",
+            "Highlight target -> ${highlightTarget.name} (${highlightTarget.id})"
+        )
+        Log.d(
+            "ElectricalTest",
+            "Highlight circuitId -> ${highlight.circuitId}"
+        )
+        Log.d(
+            "ElectricalTest",
+            "Highlight components -> ${highlight.componentIds.size}"
+        )
+        highlight.componentIds.forEachIndexed { index, componentId ->
+            Log.d(
+                "ElectricalTest",
+                "highlightComponent[$index] $componentId"
+            )
+        }
+        Log.d(
+            "ElectricalTest",
+            "Highlight edges -> ${highlight.edges.size}"
+        )
+        highlight.edges.forEachIndexed { index, edge ->
+            Log.d(
+                "ElectricalTest",
+                "highlightEdge[$index] ${edge.fromComponentId}:${edge.fromPortId} -> ${edge.toComponentId}:${edge.toPortId}"
+            )
         }
 
         Log.d("ElectricalTest", "==============================")
