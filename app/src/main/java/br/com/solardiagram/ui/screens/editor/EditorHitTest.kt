@@ -23,12 +23,11 @@ fun hitTestEditorTarget(
 ): EditorHitTarget {
     components.asReversed().forEach { component ->
         component.ports.forEachIndexed { index, port ->
-            val world = ComponentRenderer.portWorldPosition(component, port, index)
+            val world = EditorGeometry.portWorldPosition(component, port, index)
             val screen = Offset(
                 x = world.x * scale + pan.x,
                 y = world.y * scale + pan.y
             )
-
             val dx = screenPoint.x - screen.x
             val dy = screenPoint.y - screen.y
             if ((dx * dx + dy * dy) <= portRadiusPx * portRadiusPx) {
@@ -38,7 +37,7 @@ fun hitTestEditorTarget(
     }
 
     components.asReversed().forEach { component ->
-        val rect = ComponentRenderer.componentScreenRect(
+        val rect = EditorGeometry.componentScreenRect(
             component = component,
             scale = scale,
             pan = pan
