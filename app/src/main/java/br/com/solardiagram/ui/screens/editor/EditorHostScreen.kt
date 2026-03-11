@@ -35,11 +35,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import br.com.solardiagram.domain.electrical.ElectricalCircuit
 import br.com.solardiagram.domain.electrical.ElectricalCircuitAnalyzer
+import br.com.solardiagram.domain.electrical.ElectricalEdge
 import br.com.solardiagram.domain.electrical.ElectricalGraphBuilder
-import br.com.solardiagram.domain.electrical.ElectricalHighlightEngine
 import br.com.solardiagram.domain.electrical.ElectricalPathFinder
+import br.com.solardiagram.domain.model.Component
 import br.com.solardiagram.ui.viewmodel.CanvasHighlights
+import br.com.solardiagram.ui.viewmodel.EditorHostUiState
 import br.com.solardiagram.ui.viewmodel.EditorHostViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -53,33 +56,54 @@ fun EditorHostScreen(
     modifier: Modifier = Modifier
 ) {
     val hostVm: EditorHostViewModel = viewModel()
-    val hostState by hostVm.state.collectAsState()
+    val hostState: EditorHostUiState by hostVm.state.collectAsState()
 
     LaunchedEffect(projectId) {
         hostVm.load(projectId)
     }
 
-    val snackbar = remember { SnackbarHostState() }
+    val snackbar: SnackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(hostState.lastMessage) {
-        hostState.lastMessage?.let {
-            snackbar.showSnackbar(it)
+        val message: String? = hostState.lastMessage
+        if (message != null) {
+            snackbar.showSnackbar(message)
             hostVm.clearMessage()
         }
     }
 
     LaunchedEffect(hostState.error) {
-        hostState.error?.let {
-            snackbar.showSnackbar(it)
+        val message: String? = hostState.error
+        if (message != null) {
+            snackbar.showSnackbar(message)
             hostVm.clearError()
         }
     }
 
     LaunchedEffect(
         hostState.editorState?.project?.components,
-        hostState.editorState?.project?.connections
+        hostState.editorState?.project?.connections,
+        hostState.editorState?.selectedComponentId,
+        hostState.highlights.semanticFocusedComponentId,
+        hostState.highlights.semanticCircuitId,
+        hostState.highlights.semanticComponentIds,
+        hostState.highlights.semanticConnectionIds
     ) {
         val project = hostState.editorState?.project ?: return@LaunchedEffect
+        val selectedComponentId: String? = hostState.editorState?.selectedComponentId
+        val highlights: CanvasHighlights = hostState.highlights
+
+        Log.d("ElectricalTest", "==============================")
+        Log.d("ElectricalTest", "Projeto: ${project.name}")
+        Log.d("ElectricalTest", "Nodes: ${project.components.size}")
+        Log.d("ElectricalTest", "Edges: ${project.connections.size}")
+
+        project.components.forEachIndexed { index: Int, component: Component ->
+            Log.d(
+                "ElectricalTest",
+                "Componente[$index] -> name='${component.name}', id='${component.id}', type='${component.type}'"
+            )
+        }
 
         if (project.components.isEmpty()) {
             Log.d("ElectricalTest", "Projeto sem componentes. Teste ignorado.")
@@ -91,59 +115,48 @@ fun EditorHostScreen(
             return@LaunchedEffect
         }
 
+        val selectedComponent: Component? = if (selectedComponentId != null) {
+            project.components.firstOrNull { component: Component ->
+                component.id == selectedComponentId
+            }
+        } else {
+            null
+        }
+
+        Log.d("ElectricalTest", "Selected componentId -> ${selectedComponentId ?: "null"}")
+        Log.d("ElectricalTest", "Selected component -> ${selectedComponent?.name ?: "nenhum"}")
+
         val graph = ElectricalGraphBuilder.build(
             components = project.components,
             connections = project.connections
         )
 
-        Log.d("ElectricalTest", "==============================")
-        Log.d("ElectricalTest", "Projeto: ${project.name}")
-        Log.d("ElectricalTest", "Nodes: ${graph.nodes.size}")
-        Log.d("ElectricalTest", "Edges: ${graph.edges.size}")
+        val paths = runCatching {
+            val start: Component = project.components.firstOrNull { component: Component ->
+                component.name.contains("Microinversor", ignoreCase = true)
+            } ?: project.components.first()
 
-        project.components.forEachIndexed { index, component ->
-            Log.d(
-                "ElectricalTest",
-                "Componente[$index] -> name='${component.name}', id='${component.id}', type='${component.type}'"
+            val end: Component = project.components.firstOrNull { component: Component ->
+                component.name.contains("Carga", ignoreCase = true)
+            } ?: project.components.last()
+
+            Log.d("ElectricalTest", "Start escolhido -> ${start.name} (${start.id})")
+            Log.d("ElectricalTest", "End escolhido -> ${end.name} (${end.id})")
+
+            ElectricalPathFinder.findPaths(
+                graph = graph,
+                startComponentId = start.id,
+                endComponentId = end.id
             )
+        }.getOrElse { error: Throwable ->
+            Log.e("ElectricalTest", "Falha ao calcular paths", error)
+            emptyList()
         }
-
-        val preferredStart = project.components.firstOrNull {
-            val n = it.name.uppercase()
-            n.contains("PV") ||
-                    n.contains("MICRO") ||
-                    n.contains("INVERSOR")
-        }
-
-        val preferredEnd = project.components.firstOrNull {
-            val n = it.name.uppercase()
-            n.contains("CARGA") ||
-                    n.contains("LOAD")
-        }
-
-        val startComponent = preferredStart ?: project.components.first()
-        val endComponent = preferredEnd ?: project.components.last()
-
-        Log.d(
-            "ElectricalTest",
-            "Start escolhido -> ${startComponent.name} (${startComponent.id})"
-        )
-        Log.d(
-            "ElectricalTest",
-            "End escolhido -> ${endComponent.name} (${endComponent.id})"
-        )
-
-        val paths = ElectricalPathFinder.findPaths(
-            graph = graph,
-            startComponentId = startComponent.id,
-            endComponentId = endComponent.id
-        )
 
         Log.d("ElectricalTest", "Paths encontrados: ${paths.size}")
-
-        paths.forEachIndexed { pathIndex, path ->
+        paths.forEachIndexed { pathIndex: Int, path ->
             Log.d("ElectricalTest", "---- Path #$pathIndex ----")
-            path.forEachIndexed { edgeIndex, edge ->
+            path.forEachIndexed { edgeIndex: Int, edge: ElectricalEdge ->
                 Log.d(
                     "ElectricalTest",
                     "Edge[$edgeIndex] ${edge.fromComponentId}:${edge.fromPortId} -> ${edge.toComponentId}:${edge.toPortId}"
@@ -151,32 +164,27 @@ fun EditorHostScreen(
             }
         }
 
-        if (paths.isEmpty()) {
-            Log.d(
-                "ElectricalTest",
-                "Nenhum caminho encontrado entre ${startComponent.name} e ${endComponent.name}"
-            )
+        val circuits: List<ElectricalCircuit> = runCatching {
+            ElectricalCircuitAnalyzer.analyze(graph)
+        }.getOrElse { error: Throwable ->
+            Log.e("ElectricalTest", "Falha ao analisar circuitos", error)
+            emptyList()
         }
 
-        val circuits = ElectricalCircuitAnalyzer.analyze(graph)
-
         Log.d("ElectricalTest", "Circuits encontrados: ${circuits.size}")
-
-        circuits.forEachIndexed { index, circuit ->
-            Log.d("ElectricalTest", "---- Circuit #$index ----")
+        circuits.forEachIndexed { circuitIndex: Int, circuit: ElectricalCircuit ->
+            Log.d("ElectricalTest", "---- Circuit #$circuitIndex ----")
             Log.d(
                 "ElectricalTest",
                 "phase=${circuit.phase} kind=${circuit.kind} terminals=${circuit.terminalKeys.size} edges=${circuit.edges.size}"
             )
-
-            circuit.terminalKeys.forEach { terminalKey ->
+            circuit.terminalKeys.forEach { terminal: Pair<String, String> ->
                 Log.d(
                     "ElectricalTest",
-                    "terminal -> componentId=${terminalKey.first}, portId=${terminalKey.second}"
+                    "terminal -> componentId=${terminal.first}, portId=${terminal.second}"
                 )
             }
-
-            circuit.edges.forEachIndexed { edgeIndex, edge ->
+            circuit.edges.forEachIndexed { edgeIndex: Int, edge: ElectricalEdge ->
                 Log.d(
                     "ElectricalTest",
                     "circuitEdge[$edgeIndex] ${edge.fromComponentId}:${edge.fromPortId} -> ${edge.toComponentId}:${edge.toPortId}"
@@ -184,43 +192,28 @@ fun EditorHostScreen(
             }
         }
 
-        val highlightTarget = project.components.firstOrNull {
-            val n = it.name.uppercase()
-            n.contains("MICRO")
-        } ?: project.components.first()
-
-        val highlight = ElectricalHighlightEngine.highlightForComponent(
-            circuits = circuits,
-            selectedComponentId = highlightTarget.id
-        )
-
         Log.d(
             "ElectricalTest",
-            "Highlight target -> ${highlightTarget.name} (${highlightTarget.id})"
+            "Host semantic focus -> ${highlights.semanticFocusedComponentId ?: "null"}"
         )
         Log.d(
             "ElectricalTest",
-            "Highlight circuitId -> ${highlight.circuitId}"
+            "Host semantic circuitId -> ${highlights.semanticCircuitId ?: "null"}"
         )
         Log.d(
             "ElectricalTest",
-            "Highlight components -> ${highlight.componentIds.size}"
+            "Host semantic components -> ${highlights.semanticComponentIds.size}"
         )
-        highlight.componentIds.forEachIndexed { index, componentId ->
-            Log.d(
-                "ElectricalTest",
-                "highlightComponent[$index] $componentId"
-            )
+        highlights.semanticComponentIds.forEachIndexed { index: Int, componentId: String ->
+            Log.d("ElectricalTest", "hostSemanticComponent[$index] $componentId")
         }
+
         Log.d(
             "ElectricalTest",
-            "Highlight edges -> ${highlight.edges.size}"
+            "Host semantic edges -> ${highlights.semanticConnectionIds.size}"
         )
-        highlight.edges.forEachIndexed { index, edge ->
-            Log.d(
-                "ElectricalTest",
-                "highlightEdge[$index] ${edge.fromComponentId}:${edge.fromPortId} -> ${edge.toComponentId}:${edge.toPortId}"
-            )
+        highlights.semanticConnectionIds.forEachIndexed { index: Int, connectionId: String ->
+            Log.d("ElectricalTest", "hostSemanticEdge[$index] $connectionId")
         }
 
         Log.d("ElectricalTest", "==============================")
@@ -228,20 +221,16 @@ fun EditorHostScreen(
 
     val issuesOn = hostState.showIssues
     val issueSymbol = if (issuesOn) "⚠" else "○"
-
-    val issueContainerColor =
-        if (issuesOn) {
-            MaterialTheme.colorScheme.errorContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
-        }
-
-    val issueContentColor =
-        if (issuesOn) {
-            MaterialTheme.colorScheme.error
-        } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        }
+    val issueContainerColor = if (issuesOn) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val issueContentColor = if (issuesOn) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
 
     val saveStatusText = remember(
         hostState.isSaving,
@@ -306,35 +295,15 @@ fun EditorHostScreen(
                                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    CompactTopActionButton(
-                                        symbol = "💾",
-                                        onClick = { hostVm.save() }
-                                    )
-
-                                    CompactTopActionButton(
-                                        symbol = "✔",
-                                        onClick = { hostVm.validateNow() }
-                                    )
-
-                                    CompactTopActionButton(
-                                        symbol = "↔",
-                                        onClick = { hostVm.autoConnectNow() }
-                                    )
-
+                                    CompactTopActionButton(symbol = "💾", onClick = { hostVm.save() })
+                                    CompactTopActionButton(symbol = "✔", onClick = { hostVm.validateNow() })
+                                    CompactTopActionButton(symbol = "↔", onClick = { hostVm.autoConnectNow() })
                                     CompactTopActionButton(
                                         symbol = if (hostState.autoWireOnAdd) "A+" else "A-",
                                         onClick = { hostVm.toggleAutoWireOnAdd() }
                                     )
-
-                                    CompactTopActionButton(
-                                        symbol = "⇢",
-                                        onClick = { hostVm.autoLayoutNow() }
-                                    )
-
-                                    CompactTopActionButton(
-                                        symbol = "MD",
-                                        onClick = { hostVm.exportTechnicalReport() }
-                                    )
+                                    CompactTopActionButton(symbol = "⇢", onClick = { hostVm.autoLayoutNow() })
+                                    CompactTopActionButton(symbol = "MD", onClick = { hostVm.exportTechnicalReport() })
 
                                     TextButton(
                                         onClick = { hostVm.toggleIssues() },
@@ -363,10 +332,7 @@ fun EditorHostScreen(
                             tonalElevation = 1.dp,
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                         ) {
-                            CompactTopActionButton(
-                                symbol = "←",
-                                onClick = onBack
-                            )
+                            CompactTopActionButton(symbol = "←", onClick = onBack)
                         }
                     }
                 }
@@ -388,8 +354,7 @@ fun EditorHostScreen(
                     .padding(horizontal = 8.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.End
             ) {
-                // linha vazia mantida só para preservar a estrutura de layout do host,
-                // sem ocupar praticamente espaço visual
+                // reservado
             }
 
             Box(
@@ -422,7 +387,7 @@ fun EditorHostScreen(
                             addAll(
                                 hostState.validation?.report?.issues
                                     ?.take(3)
-                                    ?.map { "${it.severity} • ${it.code}" to it.message }
+                                    ?.map { issue -> "${issue.severity} • ${issue.code}" to issue.message }
                                     .orEmpty()
                             )
                         }

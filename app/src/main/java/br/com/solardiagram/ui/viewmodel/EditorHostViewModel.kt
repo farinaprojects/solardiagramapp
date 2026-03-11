@@ -4,11 +4,17 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import br.com.solardiagram.di.ServiceLocator
+import br.com.solardiagram.domain.electrical.ElectricalCircuit
+import br.com.solardiagram.domain.electrical.ElectricalCircuitAnalyzer
+import br.com.solardiagram.domain.electrical.ElectricalEdge
+import br.com.solardiagram.domain.electrical.ElectricalGraphBuilder
+import br.com.solardiagram.domain.electrical.ElectricalHighlightEngine
 import br.com.solardiagram.domain.engine.ProjectInsightEngine
 import br.com.solardiagram.domain.engine.ProjectInsights
 import br.com.solardiagram.domain.engine.ProjectValidationOutput
 import br.com.solardiagram.domain.engine.Severity
 import br.com.solardiagram.domain.engine.TechnicalReportExporter
+import br.com.solardiagram.domain.model.DiagramProject
 import br.com.solardiagram.util.AppResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -22,7 +28,11 @@ data class CanvasHighlights(
     val errorComponentIds: Set<String> = emptySet(),
     val warnComponentIds: Set<String> = emptySet(),
     val errorConnectionIds: Set<String> = emptySet(),
-    val warnConnectionIds: Set<String> = emptySet()
+    val warnConnectionIds: Set<String> = emptySet(),
+    val semanticFocusedComponentId: String? = null,
+    val semanticCircuitId: String? = null,
+    val semanticComponentIds: Set<String> = emptySet(),
+    val semanticConnectionIds: Set<String> = emptySet()
 )
 
 data class EditorHostUiState(
@@ -41,6 +51,7 @@ data class EditorHostUiState(
 )
 
 class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
+
     private val repo = ServiceLocator.projectRepository(app)
     private val validate = ServiceLocator.validateProjectUseCase()
     private val insightEngine = ProjectInsightEngine()
@@ -51,8 +62,8 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
 
     private var editorVm: EditorViewModel? = null
     private var currentProjectId: String? = null
-    private var lastValidatedProjectSnapshot: br.com.solardiagram.domain.model.DiagramProject? = null
-    private var lastPersistedProjectSnapshot: br.com.solardiagram.domain.model.DiagramProject? = null
+    private var lastValidatedProjectSnapshot: DiagramProject? = null
+    private var lastPersistedProjectSnapshot: DiagramProject? = null
     private var editorCollectJob: Job? = null
     private var autoSaveJob: Job? = null
 
@@ -61,9 +72,11 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
     fun getEditorVm(): EditorViewModel? = editorVm
 
     fun load(projectId: String) {
-        val alreadyLoaded = currentProjectId == projectId &&
-                editorVm != null &&
-                _state.value.editorState?.project?.id == projectId
+        val alreadyLoaded =
+            currentProjectId == projectId &&
+                    editorVm != null &&
+                    _state.value.editorState?.project?.id == projectId
+
         if (alreadyLoaded) return
 
         viewModelScope.launch {
@@ -79,8 +92,10 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
 
             editorCollectJob?.cancel()
             editorCollectJob = null
+
             autoSaveJob?.cancel()
             autoSaveJob = null
+
             editorVm = null
             currentProjectId = null
             lastValidatedProjectSnapshot = null
@@ -91,14 +106,18 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
                     val vm = EditorViewModel(res.value)
                     editorVm = vm
                     currentProjectId = projectId
-
                     lastPersistedProjectSnapshot = res.value
+
+                    val initialSemanticHighlights = buildSemanticHighlights(
+                        project = vm.state.value.project,
+                        selectedComponentId = vm.state.value.selectedComponentId
+                    )
 
                     _state.value = _state.value.copy(
                         isLoading = false,
                         editorState = vm.state.value,
                         validation = null,
-                        highlights = CanvasHighlights(),
+                        highlights = initialSemanticHighlights,
                         insights = insightEngine.analyze(vm.state.value.project),
                         isSaving = false,
                         hasUnsavedChanges = false,
@@ -119,11 +138,17 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
                                 persisted = lastPersistedProjectSnapshot
                             )
 
+                            val validation = _state.value.validation.takeIf { validationStillFresh }
+                            val issueHighlights = validation?.let(::buildIssueHighlights) ?: CanvasHighlights()
+                            val semanticHighlights = buildSemanticHighlights(
+                                project = st.project,
+                                selectedComponentId = st.selectedComponentId
+                            )
+
                             _state.value = _state.value.copy(
                                 editorState = st,
-                                validation = _state.value.validation.takeIf { validationStillFresh },
-                                highlights = _state.value.highlights.takeIf { validationStillFresh }
-                                    ?: CanvasHighlights(),
+                                validation = validation,
+                                highlights = mergeHighlights(issueHighlights, semanticHighlights),
                                 insights = insightEngine.analyze(st.project),
                                 hasUnsavedChanges = hasUnsavedChanges
                             )
@@ -175,9 +200,18 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
     fun autoConnectNow() {
         val vm = editorVm ?: return
         vm.autoConnectBuses()
+
+        val st = vm.state.value
+        val issueHighlights = _state.value.validation?.let(::buildIssueHighlights) ?: CanvasHighlights()
+        val semanticHighlights = buildSemanticHighlights(
+            project = st.project,
+            selectedComponentId = st.selectedComponentId
+        )
+
         _state.value = _state.value.copy(
-            editorState = vm.state.value,
-            insights = insightEngine.analyze(vm.state.value.project),
+            editorState = st,
+            highlights = mergeHighlights(issueHighlights, semanticHighlights),
+            insights = insightEngine.analyze(st.project),
             lastMessage = "Conexões automáticas com barramentos aplicadas."
         )
     }
@@ -185,15 +219,25 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
     fun autoLayoutNow() {
         val vm = editorVm ?: return
         vm.autoLayoutProject()
+
+        val st = vm.state.value
+        val issueHighlights = _state.value.validation?.let(::buildIssueHighlights) ?: CanvasHighlights()
+        val semanticHighlights = buildSemanticHighlights(
+            project = st.project,
+            selectedComponentId = st.selectedComponentId
+        )
+
         _state.value = _state.value.copy(
-            editorState = vm.state.value,
-            insights = insightEngine.analyze(vm.state.value.project),
+            editorState = st,
+            highlights = mergeHighlights(issueHighlights, semanticHighlights),
+            insights = insightEngine.analyze(st.project),
             lastMessage = "Auto layout aplicado ao diagrama."
         )
     }
 
     fun exportTechnicalReport() {
         val project = _state.value.editorState?.project ?: return
+
         viewModelScope.launch {
             runCatching {
                 val dir = File(getApplication<Application>().filesDir, "reports")
@@ -212,21 +256,30 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
 
     fun validateNow() {
         val project = _state.value.editorState?.project ?: return
+        val selectedComponentId = _state.value.editorState?.selectedComponentId
+
         viewModelScope.launch {
             val out = validate.execute(project)
-            val highlights = buildHighlights(out)
+            val issueHighlights = buildIssueHighlights(out)
+            val semanticHighlights = buildSemanticHighlights(
+                project = project,
+                selectedComponentId = selectedComponentId
+            )
+            val mergedHighlights = mergeHighlights(issueHighlights, semanticHighlights)
+
             val (errors, warnings) = countSeverities(out)
             lastValidatedProjectSnapshot = project
+
             _state.value = _state.value.copy(
                 validation = out,
-                highlights = highlights,
+                highlights = mergedHighlights,
                 insights = insightEngine.analyze(project),
                 lastMessage = "Validação: $errors erro(s), $warnings aviso(s)."
             )
         }
     }
 
-    private fun scheduleAutoSaveIfNeeded(project: br.com.solardiagram.domain.model.DiagramProject) {
+    private fun scheduleAutoSaveIfNeeded(project: DiagramProject) {
         if (!hasProjectContentChanged(current = project, persisted = lastPersistedProjectSnapshot)) {
             autoSaveJob?.cancel()
             autoSaveJob = null
@@ -244,17 +297,25 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
         val vm = editorVm ?: return
         val projectToSave = _state.value.editorState?.project ?: return
 
-        _state.value = _state.value.copy(isSaving = true, error = null)
+        _state.value = _state.value.copy(
+            isSaving = true,
+            error = null
+        )
 
         viewModelScope.launch {
             val updated = projectToSave.copy(updatedAtEpochMs = System.currentTimeMillis())
+
             when (val res = repo.saveProject(updated)) {
                 is AppResult.Ok -> {
                     lastPersistedProjectSnapshot = updated
 
                     val currentProject = _state.value.editorState?.project
-                    val stillSameProjectVersion = currentProject != null &&
-                            !hasProjectContentChanged(current = currentProject, persisted = projectToSave)
+                    val stillSameProjectVersion =
+                        currentProject != null &&
+                                !hasProjectContentChanged(
+                                    current = currentProject,
+                                    persisted = projectToSave
+                                )
 
                     if (stillSameProjectVersion) {
                         vm.replaceProject(updated)
@@ -289,8 +350,8 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun hasProjectContentChanged(
-        current: br.com.solardiagram.domain.model.DiagramProject,
-        persisted: br.com.solardiagram.domain.model.DiagramProject?
+        current: DiagramProject,
+        persisted: DiagramProject?
     ): Boolean {
         val saved = persisted ?: return true
         return current.id != saved.id ||
@@ -301,8 +362,8 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun isValidationStillFresh(
-        current: br.com.solardiagram.domain.model.DiagramProject,
-        validated: br.com.solardiagram.domain.model.DiagramProject?
+        current: DiagramProject,
+        validated: DiagramProject?
     ): Boolean {
         val snapshot = validated ?: return false
         return current.id == snapshot.id &&
@@ -315,8 +376,10 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         editorCollectJob?.cancel()
         editorCollectJob = null
+
         autoSaveJob?.cancel()
         autoSaveJob = null
+
         super.onCleared()
     }
 
@@ -334,7 +397,7 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
         return errs to warns
     }
 
-    private fun buildHighlights(out: ProjectValidationOutput): CanvasHighlights {
+    private fun buildIssueHighlights(out: ProjectValidationOutput): CanvasHighlights {
         val errC = mutableSetOf<String>()
         val warnC = mutableSetOf<String>()
         val errConn = mutableSetOf<String>()
@@ -346,14 +409,78 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
                     issue.componentId?.let { errC.add(it) }
                     issue.connectionId?.let { errConn.add(it) }
                 }
+
                 Severity.WARNING -> {
                     issue.componentId?.let { warnC.add(it) }
                     issue.connectionId?.let { warnConn.add(it) }
                 }
+
                 else -> Unit
             }
         }
 
-        return CanvasHighlights(errC, warnC, errConn, warnConn)
+        return CanvasHighlights(
+            errorComponentIds = errC,
+            warnComponentIds = warnC,
+            errorConnectionIds = errConn,
+            warnConnectionIds = warnConn
+        )
+    }
+
+    private fun buildSemanticHighlights(
+        project: DiagramProject,
+        selectedComponentId: String?
+    ): CanvasHighlights {
+        if (selectedComponentId.isNullOrBlank()) {
+            return CanvasHighlights()
+        }
+
+        val selectedComponent = project.components.firstOrNull { component ->
+            component.id == selectedComponentId
+        } ?: return CanvasHighlights()
+
+        return runCatching<CanvasHighlights> {
+            val graph = ElectricalGraphBuilder.build(project.components, project.connections)
+            val circuits: List<ElectricalCircuit> = ElectricalCircuitAnalyzer.analyze(graph)
+
+            val highlight = ElectricalHighlightEngine.highlightForComponent(
+                circuits = circuits,
+                selectedComponentId = selectedComponentId
+            )
+
+            val semanticComponentIds: Set<String> = highlight.componentIds
+            val semanticConnectionIds: Set<String> = highlight.edges
+                .map { edge: ElectricalEdge ->
+                    "${edge.fromComponentId}:${edge.fromPortId}->${edge.toComponentId}:${edge.toPortId}"
+                }
+                .toSet()
+
+            CanvasHighlights(
+                warnComponentIds = semanticComponentIds,
+                warnConnectionIds = semanticConnectionIds,
+                semanticFocusedComponentId = selectedComponentId,
+                semanticCircuitId = highlight.circuitId,
+                semanticComponentIds = semanticComponentIds,
+                semanticConnectionIds = semanticConnectionIds
+            )
+        }.getOrElse { _: Throwable ->
+            CanvasHighlights()
+        }
+    }
+
+    private fun mergeHighlights(
+        issueHighlights: CanvasHighlights,
+        semanticHighlights: CanvasHighlights
+    ): CanvasHighlights {
+        return CanvasHighlights(
+            errorComponentIds = issueHighlights.errorComponentIds,
+            warnComponentIds = issueHighlights.warnComponentIds + semanticHighlights.semanticComponentIds,
+            errorConnectionIds = issueHighlights.errorConnectionIds,
+            warnConnectionIds = issueHighlights.warnConnectionIds + semanticHighlights.semanticConnectionIds,
+            semanticFocusedComponentId = semanticHighlights.semanticFocusedComponentId,
+            semanticCircuitId = semanticHighlights.semanticCircuitId,
+            semanticComponentIds = semanticHighlights.semanticComponentIds,
+            semanticConnectionIds = semanticHighlights.semanticConnectionIds
+        )
     }
 }
