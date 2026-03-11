@@ -2,6 +2,7 @@ package br.com.solardiagram.ui.screens.editor
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import br.com.solardiagram.domain.model.BreakerPole
 import br.com.solardiagram.domain.model.Component
 import br.com.solardiagram.domain.model.ComponentType
 import br.com.solardiagram.domain.model.ElectricalPhase
@@ -13,7 +14,6 @@ import br.com.solardiagram.domain.model.PortDirection
 import br.com.solardiagram.domain.model.PortKind
 import br.com.solardiagram.domain.model.PortSide
 import br.com.solardiagram.domain.model.SystemPhase
-import br.com.solardiagram.domain.model.BreakerPole
 
 object EditorGeometry {
 
@@ -71,6 +71,12 @@ object EditorGeometry {
 
     private const val BOX_GAP = 6f
     private const val PORT_R = 4.8f
+
+    data class AcBusChannelLayout(
+        val phase: ElectricalPhase,
+        val centerLabel: String,
+        val rect: Rect
+    )
 
     fun componentScreenRect(
         component: Component,
@@ -346,6 +352,58 @@ object EditorGeometry {
         }
     }
 
+    fun acBusChannelLayout(component: Component): List<AcBusChannelLayout> {
+        val c = component.transform.position
+        val channels = mutableListOf<Pair<ElectricalPhase, String>>()
+
+        when (busPhase(component)) {
+            SystemPhase.MONO -> channels += ElectricalPhase.L1 to "BAR\nL1"
+            SystemPhase.BI -> {
+                channels += ElectricalPhase.L1 to "BAR\nL1"
+                channels += ElectricalPhase.L2 to "BAR\nL2"
+            }
+            SystemPhase.TRI -> {
+                channels += ElectricalPhase.L1 to "BAR\nL1"
+                channels += ElectricalPhase.L2 to "BAR\nL2"
+                channels += ElectricalPhase.L3 to "BAR\nL3"
+            }
+        }
+
+        val specs = component.specs as? ElectricalSpecs.AcBusSpecs
+        if (specs?.hasNeutral != false) channels += ElectricalPhase.N to "BAR\nN"
+        if (specs?.hasGround == true) channels += ElectricalPhase.PE to "BAR\nPE"
+
+        val totalW = channels.size * BUS_ITEM_W + (channels.size - 1).coerceAtLeast(0) * BUS_ITEM_GAP
+        val startX = c.x - totalW / 2f
+
+        return channels.mapIndexed { idx, (phase, label) ->
+            val left = startX + idx * (BUS_ITEM_W + BUS_ITEM_GAP)
+            AcBusChannelLayout(
+                phase = phase,
+                centerLabel = label,
+                rect = Rect(left, c.y - BUS_ITEM_H / 2f, left + BUS_ITEM_W, c.y + BUS_ITEM_H / 2f)
+            )
+        }
+    }
+
+    fun acBusOverallRect(component: Component): Rect {
+        val channels = acBusChannelLayout(component)
+        if (channels.isEmpty()) {
+            return Rect(
+                component.transform.position.x - 24f,
+                component.transform.position.y - 24f,
+                component.transform.position.x + 24f,
+                component.transform.position.y + 24f
+            )
+        }
+        return Rect(
+            channels.first().rect.left - PORT_R,
+            channels.first().rect.top - 18f,
+            channels.last().rect.right + PORT_R,
+            channels.first().rect.bottom + 18f
+        )
+    }
+
     private fun pvPortWorldPosition(component: Component, port: Port): Point2 {
         val c = component.transform.position
         val body = Rect(
@@ -458,62 +516,6 @@ object EditorGeometry {
         val id = port.spec?.id ?: port.name.lowercase()
         val isOut = id.endsWith("_out") || port.name.uppercase().startsWith("OUT ") || port.side == PortSide.BOTTOM
         return Point2(channel.rect.center.x, if (isOut) channel.rect.bottom + PORT_R else channel.rect.top - PORT_R)
-    }
-
-    private data class BusChannelLayout(
-        val phase: ElectricalPhase,
-        val centerLabel: String,
-        val rect: Rect
-    )
-
-    private fun acBusChannelLayout(component: Component): List<BusChannelLayout> {
-        val c = component.transform.position
-        val channels = mutableListOf<Pair<ElectricalPhase, String>>()
-        when (busPhase(component)) {
-            SystemPhase.MONO -> channels += ElectricalPhase.L1 to "BAR\nL1"
-            SystemPhase.BI -> {
-                channels += ElectricalPhase.L1 to "BAR\nL1"
-                channels += ElectricalPhase.L2 to "BAR\nL2"
-            }
-            SystemPhase.TRI -> {
-                channels += ElectricalPhase.L1 to "BAR\nL1"
-                channels += ElectricalPhase.L2 to "BAR\nL2"
-                channels += ElectricalPhase.L3 to "BAR\nL3"
-            }
-        }
-        val specs = component.specs as? ElectricalSpecs.AcBusSpecs
-        if (specs?.hasNeutral != false) channels += ElectricalPhase.N to "BAR\nN"
-        if (specs?.hasGround == true) channels += ElectricalPhase.PE to "BAR\nPE"
-
-        val totalW = channels.size * BUS_ITEM_W + (channels.size - 1).coerceAtLeast(0) * BUS_ITEM_GAP
-        val startX = c.x - totalW / 2f
-
-        return channels.mapIndexed { idx, (phase, label) ->
-            val left = startX + idx * (BUS_ITEM_W + BUS_ITEM_GAP)
-            BusChannelLayout(
-                phase = phase,
-                centerLabel = label,
-                rect = Rect(left, c.y - BUS_ITEM_H / 2f, left + BUS_ITEM_W, c.y + BUS_ITEM_H / 2f)
-            )
-        }
-    }
-
-    private fun acBusOverallRect(component: Component): Rect {
-        val channels = acBusChannelLayout(component)
-        if (channels.isEmpty()) {
-            return Rect(
-                component.transform.position.x - 24f,
-                component.transform.position.y - 24f,
-                component.transform.position.x + 24f,
-                component.transform.position.y + 24f
-            )
-        }
-        return Rect(
-            channels.first().rect.left - PORT_R,
-            channels.first().rect.top - 18f,
-            channels.last().rect.right + PORT_R,
-            channels.first().rect.bottom + 18f
-        )
     }
 
     private fun qdgPortWorldPosition(component: Component, port: Port): Point2 {

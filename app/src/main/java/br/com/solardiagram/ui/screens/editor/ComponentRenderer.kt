@@ -377,8 +377,8 @@ object ComponentRenderer {
         isWarning: Boolean
     ) {
         val c = component.transform.position
-        val channels = acBusChannelLayout(component)
-        val overall = acBusOverallRect(component)
+        val channels = EditorGeometry.acBusChannelLayout(component)
+        val overall = EditorGeometry.acBusOverallRect(component)
         val style = styleColors(isSelected, isDragging, isError, isWarning)
 
         with(drawScope) {
@@ -667,61 +667,6 @@ object ComponentRenderer {
         }
     }
 
-    private fun acBusChannelLayout(component: Component): List<BusChannelLayout> {
-        val c = component.transform.position
-        val channels = mutableListOf<Pair<ElectricalPhase, String>>()
-        when (busPhase(component)) {
-            SystemPhase.MONO -> channels += ElectricalPhase.L1 to "BAR\nL1"
-            SystemPhase.BI -> {
-                channels += ElectricalPhase.L1 to "BAR\nL1"
-                channels += ElectricalPhase.L2 to "BAR\nL2"
-            }
-            SystemPhase.TRI -> {
-                channels += ElectricalPhase.L1 to "BAR\nL1"
-                channels += ElectricalPhase.L2 to "BAR\nL2"
-                channels += ElectricalPhase.L3 to "BAR\nL3"
-            }
-        }
-        val specs = component.specs as? br.com.solardiagram.domain.model.ElectricalSpecs.AcBusSpecs
-        if (specs?.hasNeutral != false) channels += ElectricalPhase.N to "BAR\nN"
-        if (specs?.hasGround == true) channels += ElectricalPhase.PE to "BAR\nPE"
-
-        val totalW = channels.size * BUS_ITEM_W + (channels.size - 1).coerceAtLeast(0) * BUS_ITEM_GAP
-        val startX = c.x - totalW / 2f
-        return channels.mapIndexed { idx, (phase, label) ->
-            val left = startX + idx * (BUS_ITEM_W + BUS_ITEM_GAP)
-            BusChannelLayout(
-                phase = phase,
-                centerLabel = label,
-                rect = Rect(left, c.y - BUS_ITEM_H / 2f, left + BUS_ITEM_W, c.y + BUS_ITEM_H / 2f)
-            )
-        }
-    }
-
-    private fun acBusOverallRect(component: Component): Rect {
-        val channels = acBusChannelLayout(component)
-        if (channels.isEmpty()) {
-            return Rect(
-                component.transform.position.x - 24f,
-                component.transform.position.y - 24f,
-                component.transform.position.x + 24f,
-                component.transform.position.y + 24f
-            )
-        }
-        return Rect(
-            channels.first().rect.left - PORT_R,
-            channels.first().rect.top - 18f,
-            channels.last().rect.right + PORT_R,
-            channels.first().rect.bottom + 18f
-        )
-    }
-
-    private data class BusChannelLayout(
-        val phase: ElectricalPhase,
-        val centerLabel: String,
-        val rect: Rect
-    )
-
     private fun breakerPole(component: Component): br.com.solardiagram.domain.model.BreakerPole {
         val specs = component.specs as? br.com.solardiagram.domain.model.ElectricalSpecs.BreakerSpecs
         return specs?.poles ?: br.com.solardiagram.domain.model.BreakerPole.P2
@@ -748,15 +693,6 @@ object ComponentRenderer {
     private fun microInputPairs(component: Component): Int {
         val dcInputs = component.ports.count { it.kind == PortKind.DC_POS && (it.spec?.terminalRole?.name == "DC_INPUT" || it.direction == br.com.solardiagram.domain.model.PortDirection.INPUT) }
         return if (dcInputs >= 4) 4 else 2
-    }
-
-    private fun busPhase(component: Component): SystemPhase {
-        val specs = component.specs as? br.com.solardiagram.domain.model.ElectricalSpecs.AcBusSpecs
-        return specs?.phases ?: when {
-            component.ports.any { it.name.equals("L3", ignoreCase = true) } -> SystemPhase.TRI
-            component.ports.any { it.name.equals("L2", ignoreCase = true) } -> SystemPhase.BI
-            else -> SystemPhase.MONO
-        }
     }
 
     private fun drawSelectionHalo(
