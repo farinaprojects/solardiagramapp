@@ -18,7 +18,8 @@ object ElectricalGraphBuilder {
                     portId = port.id,
                     portName = port.name,
                     phase = port.spec?.phase,
-                    kind = port.kind
+                    kind = port.kind,
+                    terminalRole = port.spec?.terminalRole
                 )
             }
 

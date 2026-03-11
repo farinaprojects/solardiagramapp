@@ -8,7 +8,10 @@ object ElectricalCircuitAnalyzer {
 
     fun analyze(graph: ElectricalGraph): List<ElectricalCircuit> {
         val terminalIndex = buildTerminalIndex(graph)
-        val adjacency = buildUndirectedAdjacency(graph)
+
+        val externalAdjacency = buildExternalUndirectedAdjacency(graph)
+        val internalAdjacency = buildInternalUndirectedAdjacency(graph)
+        val mergedAdjacency = mergeAdjacency(externalAdjacency, internalAdjacency)
 
         val visited = mutableSetOf<Pair<String, String>>()
         val circuits = mutableListOf<ElectricalCircuit>()
@@ -17,27 +20,27 @@ object ElectricalCircuitAnalyzer {
             if (start in visited) return@forEach
 
             val startTerminal = terminalIndex[start] ?: return@forEach
-            val componentTerminals = mutableSetOf<Pair<String, String>>()
-            val componentEdges = mutableListOf<ElectricalEdge>()
+            val collectedTerminals = mutableSetOf<Pair<String, String>>()
+            val collectedEdges = mutableListOf<ElectricalEdge>()
 
             dfsCollect(
                 current = start,
                 terminalIndex = terminalIndex,
-                adjacency = adjacency,
+                adjacency = mergedAdjacency,
                 visited = visited,
-                collectedTerminals = componentTerminals,
-                collectedEdges = componentEdges,
+                collectedTerminals = collectedTerminals,
+                collectedEdges = collectedEdges,
                 referencePhase = startTerminal.phase,
                 referenceKind = startTerminal.kind
             )
 
-            if (componentTerminals.isNotEmpty()) {
+            if (collectedTerminals.isNotEmpty()) {
                 circuits += ElectricalCircuit(
                     id = UUID.randomUUID().toString(),
                     phase = startTerminal.phase,
                     kind = startTerminal.kind,
-                    terminalKeys = componentTerminals,
-                    edges = componentEdges.distinct()
+                    terminalKeys = collectedTerminals,
+                    edges = collectedEdges.distinct()
                 )
             }
         }
@@ -57,10 +60,11 @@ object ElectricalCircuitAnalyzer {
         return map
     }
 
-    private fun buildUndirectedAdjacency(
+    private fun buildExternalUndirectedAdjacency(
         graph: ElectricalGraph
     ): Map<Pair<String, String>, List<Pair<Pair<String, String>, ElectricalEdge>>> {
-        val adjacency = mutableMapOf<Pair<String, String>, MutableList<Pair<Pair<String, String>, ElectricalEdge>>>()
+        val adjacency =
+            mutableMapOf<Pair<String, String>, MutableList<Pair<Pair<String, String>, ElectricalEdge>>>()
 
         graph.edges.forEach { edge ->
             val fromKey = edge.fromComponentId to edge.fromPortId
@@ -71,6 +75,51 @@ object ElectricalCircuitAnalyzer {
         }
 
         return adjacency
+    }
+
+    private fun buildInternalUndirectedAdjacency(
+        graph: ElectricalGraph
+    ): Map<Pair<String, String>, List<Pair<Pair<String, String>, ElectricalEdge>>> {
+        val adjacency =
+            mutableMapOf<Pair<String, String>, MutableList<Pair<Pair<String, String>, ElectricalEdge>>>()
+
+        graph.nodes.forEach { node ->
+            val internals = ElectricalComponentSemantics.internalConnections(node)
+            internals.forEach { internal ->
+                val fromKey = internal.componentId to internal.fromPortId
+                val toKey = internal.componentId to internal.toPortId
+
+                val syntheticEdge = ElectricalEdge(
+                    fromComponentId = internal.componentId,
+                    fromPortId = internal.fromPortId,
+                    toComponentId = internal.componentId,
+                    toPortId = internal.toPortId
+                )
+
+                adjacency.getOrPut(fromKey) { mutableListOf() }.add(toKey to syntheticEdge)
+                adjacency.getOrPut(toKey) { mutableListOf() }.add(fromKey to syntheticEdge)
+            }
+        }
+
+        return adjacency
+    }
+
+    private fun mergeAdjacency(
+        externalAdjacency: Map<Pair<String, String>, List<Pair<Pair<String, String>, ElectricalEdge>>>,
+        internalAdjacency: Map<Pair<String, String>, List<Pair<Pair<String, String>, ElectricalEdge>>>
+    ): Map<Pair<String, String>, List<Pair<Pair<String, String>, ElectricalEdge>>> {
+        val keys = (externalAdjacency.keys + internalAdjacency.keys).toSet()
+        val merged =
+            mutableMapOf<Pair<String, String>, MutableList<Pair<Pair<String, String>, ElectricalEdge>>>()
+
+        keys.forEach { key ->
+            merged.getOrPut(key) { mutableListOf() }
+                .addAll(externalAdjacency[key].orEmpty())
+            merged.getOrPut(key) { mutableListOf() }
+                .addAll(internalAdjacency[key].orEmpty())
+        }
+
+        return merged
     }
 
     private fun dfsCollect(
@@ -97,6 +146,7 @@ object ElectricalCircuitAnalyzer {
             if (!isCompatible(nextTerminal, referencePhase, referenceKind)) return@forEach
 
             collectedEdges += edge
+
             dfsCollect(
                 current = nextKey,
                 terminalIndex = terminalIndex,
