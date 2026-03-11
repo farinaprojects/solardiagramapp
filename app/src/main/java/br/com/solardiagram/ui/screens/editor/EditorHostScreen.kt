@@ -1,5 +1,6 @@
 package br.com.solardiagram.ui.screens.editor
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import br.com.solardiagram.domain.electrical.ElectricalCircuitAnalyzer
+import br.com.solardiagram.domain.electrical.ElectricalGraphBuilder
+import br.com.solardiagram.domain.electrical.ElectricalPathFinder
 import br.com.solardiagram.ui.viewmodel.CanvasHighlights
 import br.com.solardiagram.ui.viewmodel.EditorHostViewModel
 import java.text.SimpleDateFormat
@@ -68,6 +72,118 @@ fun EditorHostScreen(
             snackbar.showSnackbar(it)
             hostVm.clearError()
         }
+    }
+
+    LaunchedEffect(
+        hostState.editorState?.project?.components,
+        hostState.editorState?.project?.connections
+    ) {
+        val project = hostState.editorState?.project ?: return@LaunchedEffect
+
+        if (project.components.isEmpty()) {
+            Log.d("ElectricalTest", "Projeto sem componentes. Teste ignorado.")
+            return@LaunchedEffect
+        }
+
+        if (project.connections.isEmpty()) {
+            Log.d("ElectricalTest", "Projeto sem conexões. Teste ignorado.")
+            return@LaunchedEffect
+        }
+
+        val graph = ElectricalGraphBuilder.build(
+            components = project.components,
+            connections = project.connections
+        )
+
+        Log.d("ElectricalTest", "==============================")
+        Log.d("ElectricalTest", "Projeto: ${project.name}")
+        Log.d("ElectricalTest", "Nodes: ${graph.nodes.size}")
+        Log.d("ElectricalTest", "Edges: ${graph.edges.size}")
+
+        project.components.forEachIndexed { index, component ->
+            Log.d(
+                "ElectricalTest",
+                "Componente[$index] -> name='${component.name}', id='${component.id}', type='${component.type}'"
+            )
+        }
+
+        val preferredStart = project.components.firstOrNull {
+            val n = it.name.uppercase()
+            n.contains("PV") ||
+                    n.contains("MICRO") ||
+                    n.contains("INVERSOR")
+        }
+
+        val preferredEnd = project.components.firstOrNull {
+            val n = it.name.uppercase()
+            n.contains("CARGA") ||
+                    n.contains("LOAD")
+        }
+
+        val startComponent = preferredStart ?: project.components.first()
+        val endComponent = preferredEnd ?: project.components.last()
+
+        Log.d(
+            "ElectricalTest",
+            "Start escolhido -> ${startComponent.name} (${startComponent.id})"
+        )
+        Log.d(
+            "ElectricalTest",
+            "End escolhido -> ${endComponent.name} (${endComponent.id})"
+        )
+
+        val paths = ElectricalPathFinder.findPaths(
+            graph = graph,
+            startComponentId = startComponent.id,
+            endComponentId = endComponent.id
+        )
+
+        Log.d("ElectricalTest", "Paths encontrados: ${paths.size}")
+
+        paths.forEachIndexed { pathIndex, path ->
+            Log.d("ElectricalTest", "---- Path #$pathIndex ----")
+            path.forEachIndexed { edgeIndex, edge ->
+                Log.d(
+                    "ElectricalTest",
+                    "Edge[$edgeIndex] ${edge.fromComponentId}:${edge.fromPortId} -> ${edge.toComponentId}:${edge.toPortId}"
+                )
+            }
+        }
+
+        if (paths.isEmpty()) {
+            Log.d(
+                "ElectricalTest",
+                "Nenhum caminho encontrado entre ${startComponent.name} e ${endComponent.name}"
+            )
+        }
+
+        val circuits = ElectricalCircuitAnalyzer.analyze(graph)
+
+        Log.d("ElectricalTest", "Circuits encontrados: ${circuits.size}")
+
+        circuits.forEachIndexed { index, circuit ->
+            Log.d("ElectricalTest", "---- Circuit #$index ----")
+            Log.d(
+                "ElectricalTest",
+                "phase=${circuit.phase} kind=${circuit.kind} terminals=${circuit.terminalKeys.size} edges=${circuit.edges.size}"
+            )
+
+            circuit.terminalKeys.forEach { terminalKey ->
+                Log.d(
+                    "ElectricalTest",
+                    "terminal -> componentId=${terminalKey.first}, portId=${terminalKey.second}"
+                )
+            }
+
+            circuit.edges.forEachIndexed { edgeIndex, edge ->
+                Log.d(
+                    "ElectricalTest",
+                    "circuitEdge[$edgeIndex] ${edge.fromComponentId}:${edge.fromPortId} -> ${edge.toComponentId}:${edge.toPortId}"
+                )
+            }
+        }
+
+        Log.d("ElectricalTest", "==============================")
     }
 
     val issuesOn = hostState.showIssues
