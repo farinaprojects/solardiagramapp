@@ -1,5 +1,7 @@
 package br.com.solardiagram.domain.engine
 
+import br.com.solardiagram.domain.electrical.ElectricalCircuit
+import br.com.solardiagram.domain.electrical.ElectricalCircuitAnalyzer
 import br.com.solardiagram.domain.electrical.ElectricalEdge
 import br.com.solardiagram.domain.electrical.ElectricalGraph
 import br.com.solardiagram.domain.model.Component
@@ -24,6 +26,7 @@ enum class ValidationCategory {
     GENERAL,
     STRUCTURAL,
     TOPOLOGY,
+    CIRCUIT,
     COMPONENT_RULE,
     VOLTAGE_DROP,
     AMPACITY
@@ -69,6 +72,10 @@ data class ProjectValidationContext(
     private val componentsById = project.components.associateBy { it.id }
     private val connectionsById = project.connections.associateBy { it.id }
 
+    val circuits: List<ElectricalCircuit> by lazy {
+        ElectricalCircuitAnalyzer.analyze(graph)
+    }
+
     fun component(componentId: String): Component? = componentsById[componentId]
 
     fun connection(connectionId: String?): Connection? = connectionId?.let { connectionsById[it] }
@@ -104,6 +111,7 @@ data class ProjectValidationContext(
         return when {
             code.startsWith("STRUCT_") -> ValidationCategory.STRUCTURAL
             code.startsWith("TOPO_") -> ValidationCategory.TOPOLOGY
+            code.startsWith("CIRCUIT_") -> ValidationCategory.CIRCUIT
             code.startsWith("VDROP_") -> ValidationCategory.VOLTAGE_DROP
             code.startsWith("AMP_") -> ValidationCategory.AMPACITY
             code.startsWith("COMP_") -> ValidationCategory.COMPONENT_RULE
