@@ -33,6 +33,7 @@ enum class ValidationCategory {
     STRUCTURAL,
     TOPOLOGY,
     CIRCUIT,
+    PROTECTION,
     COMPONENT_RULE,
     VOLTAGE_DROP,
     AMPACITY
@@ -130,6 +131,7 @@ data class ProjectValidationContext(
             code.startsWith("STRUCT_") -> ValidationCategory.STRUCTURAL
             code.startsWith("TOPO_") -> ValidationCategory.TOPOLOGY
             code.startsWith("CIRCUIT_") -> ValidationCategory.CIRCUIT
+            code.startsWith("PROT_") -> ValidationCategory.PROTECTION
             code.startsWith("VDROP_") -> ValidationCategory.VOLTAGE_DROP
             code.startsWith("AMP_") -> ValidationCategory.AMPACITY
             code.startsWith("COMP_") -> ValidationCategory.COMPONENT_RULE

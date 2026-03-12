@@ -12,6 +12,7 @@ class ProjectValidationEngine(
     private val structuralEngine: StructuralConnectionValidationEngine = StructuralConnectionValidationEngine(),
     private val topologyEngine: TopologyValidationEngine = TopologyValidationEngine(),
     private val circuitEngine: CircuitValidationEngine = CircuitValidationEngine(),
+    private val protectionEngine: ProtectionValidationEngine = ProtectionValidationEngine(),
     private val componentRuleEngine: ComponentRuleValidationEngine = ComponentRuleValidationEngine(),
     private val voltageDropEngine: ConnectionVoltageDropEngine = ConnectionVoltageDropEngine(norm),
     private val ampacityEngine: ConnectionAmpacityEngine = ConnectionAmpacityEngine(norm),
@@ -26,6 +27,7 @@ class ProjectValidationEngine(
             addAll(structuralEngine.evaluate(project))
             addAll(topologyEngine.evaluate(project, graph))
             addAll(circuitEngine.evaluate(context))
+            addAll(protectionEngine.evaluate(context))
             addAll(componentRuleEngine.evaluate(project))
             addAll(voltageDropEngine.evaluate(context))
             addAll(ampacityEngine.evaluate(context))
@@ -64,10 +66,11 @@ class ProjectValidationEngine(
         ValidationCategory.STRUCTURAL -> 0
         ValidationCategory.TOPOLOGY -> 1
         ValidationCategory.CIRCUIT -> 2
-        ValidationCategory.COMPONENT_RULE -> 3
-        ValidationCategory.AMPACITY -> 4
-        ValidationCategory.VOLTAGE_DROP -> 5
-        ValidationCategory.GENERAL -> 6
+        ValidationCategory.PROTECTION -> 3
+        ValidationCategory.COMPONENT_RULE -> 4
+        ValidationCategory.AMPACITY -> 5
+        ValidationCategory.VOLTAGE_DROP -> 6
+        ValidationCategory.GENERAL -> 7
     }
 
     private fun componentTypeRank(type: ComponentType?): Int = when (type) {
