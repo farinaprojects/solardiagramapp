@@ -12,6 +12,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import br.com.solardiagram.domain.model.Point2
 import br.com.solardiagram.ui.viewmodel.EditorUiState
 import br.com.solardiagram.ui.viewmodel.EditorViewModel
+import br.com.solardiagram.ui.viewmodel.SelectionSource
 
 fun Modifier.editorCanvasGestures(
     interaction: EditorCanvasInteractionState,
@@ -51,7 +52,6 @@ fun Modifier.editorCanvasGestures(
                     val pc = e2.changes.count { it.pressed }
 
                     if (pc == 0) break
-
                     if (pc < 2) {
                         if (e2.changes.none { it.pressed }) break
                         continue
@@ -109,14 +109,17 @@ fun Modifier.editorCanvasGestures(
                         viewModel.selectConnection(target.connectionId)
                     }
 
+                    is EditorHitTarget.Port -> {
+                        interaction.clearPinnedSelection()
+                        viewModel.selectComponent(
+                            target.componentId,
+                            source = SelectionSource.TAP_COMPONENT
+                        )
+                    }
+
                     EditorHitTarget.None -> {
                         interaction.clearPinnedSelection()
                         viewModel.clearSelection()
-                    }
-
-                    is EditorHitTarget.Port -> {
-                        interaction.clearPinnedSelection()
-                        viewModel.selectComponent(target.componentId)
                     }
                 }
                 return@awaitEachGesture
@@ -128,12 +131,17 @@ fun Modifier.editorCanvasGestures(
 
             val moveSlopPx = 2.5f
             val longPressMs = 260L
+
             val movedEnough = dist2 >= moveSlopPx * moveSlopPx
             val longPressed = (System.currentTimeMillis() - startTime) >= longPressMs
 
             if (target is EditorHitTarget.Port) {
                 val cid = target.componentId
                 val pid = target.portId
+
+                if (!movedEnough && !longPressed) {
+                    continue
+                }
 
                 if (stateAtDown.connectingFrom != null) {
                     viewModel.tryFinishConnection(cid, pid)
@@ -152,7 +160,6 @@ fun Modifier.editorCanvasGestures(
                             scale = scaleAtDown,
                             thresholdPx = 22f
                         )
-
                         if (snap != null) {
                             viewModel.updateWirePreview(
                                 world = snap.portWorld,
@@ -215,7 +222,10 @@ fun Modifier.editorCanvasGestures(
                 val downWorld = screenToWorld(start, scaleAtDown, panAtDown)
                 val baseComp = compsById[compId]
                 val baseStart = baseComp?.transform?.position ?: downWorld
-                val grabOffset = Point2(downWorld.x - baseStart.x, downWorld.y - baseStart.y)
+                val grabOffset = Point2(
+                    downWorld.x - baseStart.x,
+                    downWorld.y - baseStart.y
+                )
 
                 val initialPositions = groupIds.associateWith { id ->
                     compsById[id]?.transform?.position ?: Point2(0f, 0f)
@@ -229,7 +239,10 @@ fun Modifier.editorCanvasGestures(
                     initialDown = ch,
                     onMove = { pos ->
                         val world = screenToWorld(pos, scaleAtDown, panAtDown)
-                        val baseNew = Point2(world.x - grabOffset.x, world.y - grabOffset.y)
+                        val baseNew = Point2(
+                            world.x - grabOffset.x,
+                            world.y - grabOffset.y
+                        )
                         val snappedVisual = SnapEngine.snapToGrid(baseNew)
 
                         interaction.guideX = snappedVisual.x
@@ -253,15 +266,19 @@ fun Modifier.editorCanvasGestures(
 
                         groupIds.forEach { id ->
                             val p0 = initialPositions[id] ?: return@forEach
-                            viewModel.moveComponent(id, Point2(p0.x + ddx, p0.y + ddy))
+                            viewModel.moveComponent(
+                                id,
+                                Point2(p0.x + ddx, p0.y + ddy)
+                            )
                         }
 
                         interaction.clearPinnedSelection()
                         viewModel.setSelectedComponents(
                             groupIds,
-                            source = br.com.solardiagram.ui.viewmodel.SelectionSource.DRAG
+                            source = SelectionSource.DRAG
                         )
                         viewModel.markSelectionAsDragged()
+
                         interaction.overridePositions = null
                         interaction.draggingIds = emptySet()
                         interaction.guideX = null
@@ -312,7 +329,7 @@ fun Modifier.editorCanvasGestures(
                                 val rect = screenRect(a, b)
                                 val hits = stateAtDown.project.components
                                     .filter { comp ->
-                                        val compRect = EditorGeometry.componentScreenRect(
+                                        val compRect = ComponentRenderer.componentScreenRect(
                                             comp,
                                             scaleAtDown,
                                             panAtDown

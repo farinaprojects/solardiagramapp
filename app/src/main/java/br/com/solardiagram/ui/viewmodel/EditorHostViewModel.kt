@@ -445,7 +445,9 @@ class EditorHostViewModel(app: Application) : AndroidViewModel(app) {
 
             val highlight = ElectricalHighlightEngine.highlightForComponent(
                 circuits = circuits,
-                selectedComponentId = selectedComponentId
+                selectedComponentId = selectedComponentId,
+                selectedComponentName = selectedComponent.name,
+                selectedComponentType = selectedComponent.type.name
             )
 
             val semanticComponentIds: Set<String> = highlight.componentIds

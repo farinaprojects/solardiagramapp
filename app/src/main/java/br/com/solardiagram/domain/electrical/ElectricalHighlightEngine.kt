@@ -12,7 +12,9 @@ object ElectricalHighlightEngine {
         selectedComponentType: String? = null
     ): ElectricalHighlightResult {
         val candidates = circuits.filter { circuit ->
-            circuit.terminalKeys.any { (componentId, _) -> componentId == selectedComponentId }
+            circuit.terminalKeys.any { (componentId, _) ->
+                componentId == selectedComponentId
+            }
         }
 
         if (candidates.isEmpty()) {
@@ -23,7 +25,87 @@ object ElectricalHighlightEngine {
             )
         }
 
-        val best = candidates.maxWithOrNull(
+        val normalizedType = selectedComponentType
+            ?.trim()
+            ?.uppercase()
+            .orEmpty()
+
+        val grouped = if (shouldGroupCircuits(normalizedType)) {
+            buildGroupedHighlight(candidates, selectedComponentId)
+        } else {
+            buildSingleCircuitHighlight(
+                circuits = candidates,
+                selectedComponentId = selectedComponentId,
+                selectedComponentName = selectedComponentName,
+                selectedComponentType = selectedComponentType
+            )
+        }
+
+        if (grouped != null) {
+            return grouped
+        }
+
+        return buildSingleCircuitHighlight(
+            circuits = candidates,
+            selectedComponentId = selectedComponentId,
+            selectedComponentName = selectedComponentName,
+            selectedComponentType = selectedComponentType
+        )
+    }
+
+    private fun shouldGroupCircuits(selectedComponentType: String): Boolean {
+        return selectedComponentType.contains("BREAKER") ||
+                selectedComponentType.contains("LOAD")
+    }
+
+    private fun buildGroupedHighlight(
+        circuits: List<ElectricalCircuit>,
+        selectedComponentId: String
+    ): ElectricalHighlightResult? {
+        val phaseCircuits = circuits
+            .filter { circuit ->
+                circuit.kind == PortKind.AC_L &&
+                        circuit.phase in setOf(
+                    ElectricalPhase.L1,
+                    ElectricalPhase.L2,
+                    ElectricalPhase.L3
+                )
+            }
+            .sortedByDescending { circuit -> groupedPhasePriority(circuit.phase) }
+
+        if (phaseCircuits.isEmpty()) {
+            return null
+        }
+
+        val componentIds = linkedSetOf<String>()
+        val edgesByKey = linkedMapOf<String, ElectricalEdge>()
+
+        phaseCircuits.forEach { circuit ->
+            circuit.terminalKeys.forEach { (componentId, _) ->
+                componentIds.add(componentId)
+            }
+
+            circuit.edges.forEach { edge ->
+                edgesByKey[edgeKey(edge)] = edge
+            }
+        }
+
+        componentIds.add(selectedComponentId)
+
+        return ElectricalHighlightResult(
+            circuitId = phaseCircuits.joinToString("+") { it.id },
+            componentIds = componentIds,
+            edges = edgesByKey.values.toList()
+        )
+    }
+
+    private fun buildSingleCircuitHighlight(
+        circuits: List<ElectricalCircuit>,
+        selectedComponentId: String,
+        selectedComponentName: String?,
+        selectedComponentType: String?
+    ): ElectricalHighlightResult {
+        val best = circuits.maxWithOrNull(
             compareByDescending<ElectricalCircuit> {
                 circuitPriority(
                     circuit = it,
@@ -33,11 +115,11 @@ object ElectricalHighlightEngine {
             }
                 .thenByDescending { it.edges.size }
                 .thenByDescending { it.terminalKeys.size }
-        ) ?: candidates.first()
+        ) ?: circuits.first()
 
         val componentIds = best.terminalKeys
             .map { it.first }
-            .toSet()
+            .toSet() + selectedComponentId
 
         return ElectricalHighlightResult(
             circuitId = best.id,
@@ -117,6 +199,15 @@ object ElectricalHighlightEngine {
         return 10
     }
 
+    private fun groupedPhasePriority(phase: ElectricalPhase?): Int {
+        return when (phase) {
+            ElectricalPhase.L1 -> 300
+            ElectricalPhase.L2 -> 290
+            ElectricalPhase.L3 -> 280
+            else -> 0
+        }
+    }
+
     private fun isPreferredAcPhase(phase: ElectricalPhase?): Boolean {
         return when (phase) {
             ElectricalPhase.L1,
@@ -125,6 +216,18 @@ object ElectricalHighlightEngine {
             ElectricalPhase.N,
             ElectricalPhase.PE -> true
             else -> false
+        }
+    }
+
+    private fun edgeKey(edge: ElectricalEdge): String {
+        return buildString {
+            append(edge.fromComponentId)
+            append(':')
+            append(edge.fromPortId)
+            append("->")
+            append(edge.toComponentId)
+            append(':')
+            append(edge.toPortId)
         }
     }
 }
