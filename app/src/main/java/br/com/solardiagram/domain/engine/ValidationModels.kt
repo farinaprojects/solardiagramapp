@@ -4,12 +4,13 @@ import br.com.solardiagram.domain.electrical.ElectricalCircuit
 import br.com.solardiagram.domain.electrical.ElectricalCircuitAnalyzer
 import br.com.solardiagram.domain.electrical.ElectricalEdge
 import br.com.solardiagram.domain.electrical.ElectricalFlow
+import br.com.solardiagram.domain.electrical.ElectricalFlowAnalyzer
+import br.com.solardiagram.domain.electrical.ElectricalFlowCalculation
+import br.com.solardiagram.domain.electrical.ElectricalGraph
 import br.com.solardiagram.domain.electrical.ElectricalInstallation
 import br.com.solardiagram.domain.electrical.ElectricalInstallationAnalyzer
 import br.com.solardiagram.domain.electrical.ElectricalProtection
 import br.com.solardiagram.domain.electrical.ElectricalProtectionAnalyzer
-import br.com.solardiagram.domain.electrical.ElectricalFlowAnalyzer
-import br.com.solardiagram.domain.electrical.ElectricalGraph
 import br.com.solardiagram.domain.model.Component
 import br.com.solardiagram.domain.model.ComponentType
 import br.com.solardiagram.domain.model.Connection
@@ -93,6 +94,10 @@ data class ProjectValidationContext(
 
     val protections: List<ElectricalProtection> by lazy {
         ElectricalProtectionAnalyzer.analyze(project, graph, flows, installation)
+    }
+
+    val calculations: Map<String, ElectricalFlowCalculation> by lazy {
+        ElectricalCalculationEngine().evaluate(this)
     }
 
     fun component(componentId: String): Component? = componentsById[componentId]
