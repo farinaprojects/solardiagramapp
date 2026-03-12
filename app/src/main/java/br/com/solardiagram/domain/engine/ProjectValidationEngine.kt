@@ -13,6 +13,7 @@ class ProjectValidationEngine(
     private val topologyEngine: TopologyValidationEngine = TopologyValidationEngine(),
     private val circuitEngine: CircuitValidationEngine = CircuitValidationEngine(),
     private val protectionEngine: ProtectionValidationEngine = ProtectionValidationEngine(),
+    private val protectionTechnicalEngine: ProtectionTechnicalValidationEngine = ProtectionTechnicalValidationEngine(),
     private val componentRuleEngine: ComponentRuleValidationEngine = ComponentRuleValidationEngine(),
     private val voltageDropEngine: ConnectionVoltageDropEngine = ConnectionVoltageDropEngine(norm),
     private val ampacityEngine: ConnectionAmpacityEngine = ConnectionAmpacityEngine(norm),
@@ -28,6 +29,7 @@ class ProjectValidationEngine(
             addAll(topologyEngine.evaluate(project, graph))
             addAll(circuitEngine.evaluate(context))
             addAll(protectionEngine.evaluate(context))
+            addAll(protectionTechnicalEngine.evaluate(context))
             addAll(componentRuleEngine.evaluate(project))
             addAll(voltageDropEngine.evaluate(context))
             addAll(ampacityEngine.evaluate(context))
