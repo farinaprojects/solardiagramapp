@@ -1,5 +1,6 @@
 package br.com.solardiagram.domain.engine
 
+import br.com.solardiagram.domain.electrical.ElectricalGraph
 import br.com.solardiagram.domain.model.ComponentType
 import br.com.solardiagram.domain.model.DiagramProject
 
@@ -82,7 +83,8 @@ data class ProjectValidationContext(
 
     private fun inferTypeFromConnection(connectionId: String?): ComponentType? {
         val edge = graph.edges.firstOrNull { it.connectionId == connectionId } ?: return null
-        return componentsById[edge.fromComponentId]?.type ?: componentsById[edge.toComponentId]?.type
+        return componentsById[edge.fromComponentId]?.type
+            ?: componentsById[edge.toComponentId]?.type
     }
 
     private fun inferCategory(code: String): ValidationCategory {

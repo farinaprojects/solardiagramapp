@@ -1,5 +1,6 @@
 package br.com.solardiagram.domain.engine
 
+import br.com.solardiagram.domain.electrical.ElectricalGraph
 import br.com.solardiagram.domain.model.Component
 import br.com.solardiagram.domain.model.ComponentType
 import br.com.solardiagram.domain.model.DiagramProject
@@ -44,9 +45,15 @@ class TopologyValidationEngine {
                 }
             }
 
-            if (component.type == ComponentType.AC_BUS || component.type == ComponentType.BARL || component.type == ComponentType.BARN || component.type == ComponentType.BARPE) {
+            if (
+                component.type == ComponentType.AC_BUS ||
+                component.type == ComponentType.BARL ||
+                component.type == ComponentType.BARN ||
+                component.type == ComponentType.BARPE
+            ) {
                 val nonProtectiveConnectedPorts = component.ports.count { port ->
-                    port.kind != PortKind.PE && graph.edgesForNode(graph.nodeId(component.id, port.id)).isNotEmpty()
+                    port.kind != PortKind.PE &&
+                            graph.edgesForNode(graph.nodeId(component.id, port.id)).isNotEmpty()
                 }
 
                 if (nonProtectiveConnectedPorts == 0) {
@@ -97,6 +104,7 @@ class TopologyValidationEngine {
     private fun isRequiredPort(component: Component, port: Port): Boolean {
         if (port.kind == PortKind.PE) return false
         port.spec?.let { return it.required }
+
         return when (component.type) {
             ComponentType.PV_MODULE,
             ComponentType.MICROINVERTER,
@@ -105,7 +113,11 @@ class TopologyValidationEngine {
             ComponentType.QDG,
             ComponentType.LOAD -> port.direction != PortDirection.BIDIRECTIONAL
 
-            ComponentType.AC_BUS, ComponentType.BARL, ComponentType.BARN, ComponentType.BARPE -> false
+            ComponentType.AC_BUS,
+            ComponentType.BARL,
+            ComponentType.BARN,
+            ComponentType.BARPE -> false
+
             ComponentType.DPS -> false
             ComponentType.GROUND_BAR -> false
         }

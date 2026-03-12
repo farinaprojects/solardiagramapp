@@ -90,10 +90,9 @@ object ElectricalCircuitAnalyzer {
                 val toKey = internal.componentId to internal.toPortId
 
                 val syntheticEdge = ElectricalEdge(
-                    fromComponentId = internal.componentId,
-                    fromPortId = internal.fromPortId,
-                    toComponentId = internal.componentId,
-                    toPortId = internal.toPortId
+                    fromNodeId = "${internal.componentId}:${internal.fromPortId}",
+                    toNodeId = "${internal.componentId}:${internal.toPortId}",
+                    connectionId = null
                 )
 
                 adjacency.getOrPut(fromKey) { mutableListOf() }.add(toKey to syntheticEdge)
