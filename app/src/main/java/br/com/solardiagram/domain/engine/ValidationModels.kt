@@ -1,8 +1,12 @@
 package br.com.solardiagram.domain.engine
 
+import br.com.solardiagram.domain.electrical.ElectricalEdge
 import br.com.solardiagram.domain.electrical.ElectricalGraph
+import br.com.solardiagram.domain.model.Component
 import br.com.solardiagram.domain.model.ComponentType
+import br.com.solardiagram.domain.model.Connection
 import br.com.solardiagram.domain.model.DiagramProject
+import br.com.solardiagram.domain.model.Port
 
 data class ProjectValidationOutput(
     val report: ValidationReport,
@@ -63,6 +67,15 @@ data class ProjectValidationContext(
     val graph: ElectricalGraph
 ) {
     private val componentsById = project.components.associateBy { it.id }
+    private val connectionsById = project.connections.associateBy { it.id }
+
+    fun component(componentId: String): Component? = componentsById[componentId]
+
+    fun connection(connectionId: String?): Connection? = connectionId?.let { connectionsById[it] }
+
+    fun connectionForEdge(edge: ElectricalEdge): Connection? = connection(edge.connectionId)
+
+    fun port(componentId: String, portId: String): Port? = component(componentId)?.portById(portId)
 
     fun enrich(issue: ValidationIssue): ValidationIssue {
         val inferredType = issue.componentType

@@ -25,8 +25,8 @@ class ProjectValidationEngine(
             addAll(structuralEngine.evaluate(project))
             addAll(topologyEngine.evaluate(project, graph))
             addAll(componentRuleEngine.evaluate(project))
-            addAll(voltageDropEngine.evaluate(project))
-            addAll(ampacityEngine.evaluate(project))
+            addAll(voltageDropEngine.evaluate(context))
+            addAll(ampacityEngine.evaluate(context))
             addAll(breakerLoadEngine.evaluate(project))
         }
             .map { context.enrich(it) }

@@ -1,6 +1,10 @@
 package br.com.solardiagram.domain.engine
 
-import br.com.solardiagram.domain.model.*
+import br.com.solardiagram.domain.electrical.ElectricalEdge
+import br.com.solardiagram.domain.model.Component
+import br.com.solardiagram.domain.model.CurrentKind
+import br.com.solardiagram.domain.model.ElectricalSpecs
+import br.com.solardiagram.domain.model.PortKind
 import br.com.solardiagram.domain.rules.NormProfile
 import br.com.solardiagram.util.Ids
 
@@ -8,24 +12,32 @@ class ConnectionVoltageDropEngine(
     private val norm: NormProfile,
     private val cable: CableSizingEngine = CableSizingEngine()
 ) {
-    fun evaluate(project: DiagramProject): List<ValidationIssue> {
+    fun evaluate(project: br.com.solardiagram.domain.model.DiagramProject): List<ValidationIssue> {
+        val context = ProjectValidationContext(
+            project = project,
+            graph = br.com.solardiagram.domain.electrical.ElectricalGraphBuilder.build(project)
+        )
+        return evaluate(context)
+    }
+
+    fun evaluate(context: ProjectValidationContext): List<ValidationIssue> {
         val issues = mutableListOf<ValidationIssue>()
 
-        val compById = project.components.associateBy { it.id }
         val currentEngine = CurrentEstimationEngine()
         val detector = MainRunDetectionEngine(currentEngine)
 
-        val mainAc = detector.detectMainAcRun(project.components, project.connections)
-        val mainDc = detector.detectMainDcRun(project.components)
+        val mainAc = detector.detectMainAcRun(context.graph, context)
+        val mainDc = detector.detectMainDcRun(context.graph, context)
 
-        project.connections.forEach { conn ->
+        context.graph.edges.forEach { edge ->
+            val conn = context.connectionForEdge(edge) ?: return@forEach
             val len = conn.meta.lengthMeters ?: return@forEach
             if (len <= 0.0) return@forEach
 
-            val fromComp = compById[conn.fromComponentId] ?: return@forEach
-            val toComp = compById[conn.toComponentId] ?: return@forEach
-            val fromPort = fromComp.portById(conn.fromPortId) ?: return@forEach
-            val toPort = toComp.portById(conn.toPortId) ?: return@forEach
+            val fromComp = context.component(edge.fromComponentId) ?: return@forEach
+            val toComp = context.component(edge.toComponentId) ?: return@forEach
+            val fromPort = context.port(edge.fromComponentId, edge.fromPortId) ?: return@forEach
+            val toPort = context.port(edge.toComponentId, edge.toPortId) ?: return@forEach
 
             val kind = inferKind(fromPort.kind, toPort.kind) ?: return@forEach
             val maxDrop = if (kind == CurrentKind.AC) norm.maxVoltageDropPercentAc else norm.maxVoltageDropPercentDc
