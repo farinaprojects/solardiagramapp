@@ -24,6 +24,7 @@ class ComponentRuleValidationEngine {
                 ComponentType.BARL -> validateBarL(component)
                 ComponentType.BARN -> validateBarN(component)
                 ComponentType.BARPE -> validateBarPe(component)
+                ComponentType.GRID_SOURCE -> validateQdg(component)
                 ComponentType.QDG -> validateQdg(component)
                 ComponentType.BREAKER -> validateBreaker(component)
                 ComponentType.DPS -> validateDps(component)

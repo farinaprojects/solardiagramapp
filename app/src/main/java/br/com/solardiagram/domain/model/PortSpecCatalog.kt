@@ -513,6 +513,59 @@ object PortSpecCatalog {
         return ports
     }
 
+
+    fun gridSourcePorts(phases: SystemPhase): List<PortTemplate> {
+        val ports = mutableListOf<PortTemplate>()
+
+        val linePhases = when (phases) {
+            SystemPhase.MONO -> listOf(ElectricalPhase.L1, ElectricalPhase.N)
+            SystemPhase.BI -> listOf(ElectricalPhase.L1, ElectricalPhase.N, ElectricalPhase.L2)
+            SystemPhase.TRI -> listOf(ElectricalPhase.L1, ElectricalPhase.L2, ElectricalPhase.L3, ElectricalPhase.N)
+        }
+
+        linePhases.forEachIndexed { idx, phase ->
+            val kind = if (phase == ElectricalPhase.N) PortKind.AC_N else PortKind.AC_L
+
+            ports += PortTemplate(
+                logicalId = "grid_${phase.name.lowercase()}",
+                displayName = "REDE ${phase.name}",
+                kind = kind,
+                direction = PortDirection.OUTPUT,
+                side = PortSide.RIGHT,
+                slot = idx,
+                spec = ComponentPortSpec(
+                    id = "grid_${phase.name.lowercase()}",
+                    name = "REDE ${phase.name}",
+                    type = PortElectricalType.AC,
+                    phase = phase,
+                    terminalRole = PhysicalTerminalRole.LINE,
+                    maxConnections = 1,
+                    required = true
+                )
+            )
+        }
+
+        ports += PortTemplate(
+            logicalId = "pe",
+            displayName = "PE",
+            kind = PortKind.PE,
+            direction = PortDirection.BIDIRECTIONAL,
+            side = PortSide.BOTTOM,
+            slot = 0,
+            spec = ComponentPortSpec(
+                id = "pe",
+                name = "PE",
+                type = PortElectricalType.GROUND,
+                phase = ElectricalPhase.PE,
+                terminalRole = PhysicalTerminalRole.PROTECTIVE_EARTH,
+                maxConnections = 1,
+                required = false
+            )
+        )
+
+        return ports
+    }
+
     fun qdgPorts(phases: SystemPhase): List<PortTemplate> {
         val ports = mutableListOf<PortTemplate>()
 

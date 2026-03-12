@@ -230,6 +230,7 @@ object ProjectMapperV1 {
                 hasNeutral = d("hasNeutral","true").toBoolean(),
                 hasGround = d("hasGround","true").toBoolean()
             )
+            ComponentType.GRID_SOURCE,
             ComponentType.QDG -> ElectricalSpecs.QdgSpecs(
                 maxBusCurrentA = d("maxBusCurrentA","80").toDouble(),
                 phases = SystemPhase.valueOf(d("phases","BI"))
@@ -385,7 +386,21 @@ object ProjectMapperV1 {
             }
             ComponentType.AC_BUS, ComponentType.BARL, ComponentType.BARN, ComponentType.BARPE -> PhysicalTerminalRole.BUSBAR
             ComponentType.BREAKER -> if (n.contains("IN") || n.contains("LINE")) PhysicalTerminalRole.LINE else PhysicalTerminalRole.LOAD
-            ComponentType.QDG -> if (n.contains("IN") || n.contains("ALIM")) PhysicalTerminalRole.LINE else if (n.contains("PE")) PhysicalTerminalRole.BUSBAR else PhysicalTerminalRole.LOAD
+
+            ComponentType.GRID_SOURCE -> if (n.contains("PE")) {
+                PhysicalTerminalRole.PROTECTIVE_EARTH
+            } else {
+                PhysicalTerminalRole.LINE
+            }
+
+            ComponentType.QDG -> if (n.contains("IN") || n.contains("ALIM")) {
+                PhysicalTerminalRole.LINE
+            } else if (n.contains("PE")) {
+                PhysicalTerminalRole.BUSBAR
+            } else {
+                PhysicalTerminalRole.LOAD
+            }
+
             ComponentType.DPS -> if (n.contains("PE")) PhysicalTerminalRole.PROTECTIVE_EARTH else PhysicalTerminalRole.SURGE_REFERENCE
             ComponentType.GROUND_BAR -> PhysicalTerminalRole.BUSBAR
             ComponentType.LOAD -> if (n.contains("PE")) PhysicalTerminalRole.PROTECTIVE_EARTH else PhysicalTerminalRole.LINE
@@ -403,6 +418,7 @@ object ProjectMapperV1 {
         ComponentType.MICROINVERTER,
         ComponentType.STRING_INVERTER,
         ComponentType.BREAKER,
+        ComponentType.GRID_SOURCE,
         ComponentType.QDG,
         ComponentType.LOAD -> !name.uppercase().contains("PE")
         ComponentType.AC_BUS, ComponentType.BARL, ComponentType.BARN, ComponentType.BARPE, ComponentType.DPS, ComponentType.GROUND_BAR -> false

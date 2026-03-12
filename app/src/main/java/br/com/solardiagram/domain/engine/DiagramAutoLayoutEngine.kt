@@ -28,6 +28,7 @@ class DiagramAutoLayoutEngine(
     }
 
     private fun columnFor(type: ComponentType): Int = when (type) {
+        ComponentType.GRID_SOURCE -> 0
         ComponentType.PV_MODULE -> 0
         ComponentType.MICROINVERTER, ComponentType.STRING_INVERTER -> 1
         ComponentType.BREAKER, ComponentType.DPS -> 2

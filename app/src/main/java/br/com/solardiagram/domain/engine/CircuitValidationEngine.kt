@@ -62,7 +62,8 @@ class CircuitValidationEngine {
         val terminals = resolveCircuitTerminalRefs(context, circuit)
         if (terminals.isEmpty()) return emptyList()
 
-        val hasSource = terminals.any(::isSemanticSource)
+        val hasGridSourceInProject = context.project.components.any { it.type == ComponentType.GRID_SOURCE }
+        val hasSource = terminals.any { isSemanticSource(it, hasGridSourceInProject) }
         val hasDestination = terminals.any(::isSemanticDestination)
 
         val sampleComponent = terminals.firstOrNull()?.component
@@ -110,7 +111,8 @@ class CircuitValidationEngine {
         val terminals = resolveCircuitTerminalRefs(context, circuit)
         if (terminals.isEmpty()) return emptyList()
 
-        val sources = terminals.filter(::isSemanticSource)
+        val hasGridSourceInProject = context.project.components.any { it.type == ComponentType.GRID_SOURCE }
+        val sources = terminals.filter { isSemanticSource(it, hasGridSourceInProject) }
         val destinations = terminals.filter(::isSemanticDestination)
 
         if (sources.isEmpty() || destinations.isEmpty()) return emptyList()
@@ -165,12 +167,17 @@ class CircuitValidationEngine {
         return circuit.kind != null || circuit.phase != null
     }
 
-    private fun isSemanticSource(ref: CircuitTerminalRef): Boolean {
+    private fun isSemanticSource(ref: CircuitTerminalRef, hasGridSourceInProject: Boolean): Boolean {
         val role = ref.port.spec?.terminalRole
         val name = ref.port.name
 
         return when (ref.component.type) {
             ComponentType.PV_MODULE -> ref.port.kind == PortKind.DC_POS || ref.port.kind == PortKind.DC_NEG
+
+            ComponentType.GRID_SOURCE -> {
+                role == PhysicalTerminalRole.LINE ||
+                    ref.port.direction == PortDirection.OUTPUT
+            }
 
             ComponentType.MICROINVERTER,
             ComponentType.STRING_INVERTER -> {
@@ -179,10 +186,13 @@ class CircuitValidationEngine {
             }
 
             ComponentType.QDG -> {
-                role == PhysicalTerminalRole.LINE ||
-                    name.contains("line", ignoreCase = true) ||
-                    name.contains("in", ignoreCase = true) ||
-                    name.contains("entrada", ignoreCase = true)
+                !hasGridSourceInProject && (
+                    role == PhysicalTerminalRole.LINE ||
+                        name.contains("line", ignoreCase = true) ||
+                        name.contains("in", ignoreCase = true) ||
+                        name.contains("entrada", ignoreCase = true) ||
+                        name.contains("alim", ignoreCase = true)
+                    )
             }
 
             else -> false

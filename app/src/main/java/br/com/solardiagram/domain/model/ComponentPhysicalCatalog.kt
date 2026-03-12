@@ -139,6 +139,23 @@ object ComponentPhysicalCatalog {
         )
     )
 
+
+    val GRID_SOURCE = ComponentPhysicalBehavior(
+        componentType = ComponentType.GRID_SOURCE,
+        title = "Alimentação da rede",
+        realWorldDescription = "Ponto de entrada da concessionária ou alimentador principal a montante do quadro de distribuição.",
+        terminalSummary = "terminais AC de saída por fase/neutro e PE de referência/proteção.",
+        keyBehaviors = listOf(
+            "atua como origem externa de energia no diagrama",
+            "não representa distribuição interna do quadro",
+            "deve alimentar QDG, disjuntores ou ponto equivalente de entrada"
+        ),
+        recommendedModelingNotes = listOf(
+            "usar como fonte semântica primária da rede",
+            "evitar usar QDG como origem quando GRID_SOURCE estiver presente"
+        )
+    )
+
     val QDG = ComponentPhysicalBehavior(
         componentType = ComponentType.QDG,
         title = "Quadro/QDG",

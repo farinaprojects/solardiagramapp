@@ -131,6 +131,9 @@ object ComponentRenderer {
                 ComponentType.QDG -> drawQdg(
                     drawScope, component, scale, pan, isSelected, isDragging, isError, isWarning
                 )
+                ComponentType.GRID_SOURCE -> drawQdg(
+                    drawScope, component, scale, pan, isSelected, isDragging, isError, isWarning
+                )
 
                 ComponentType.BREAKER -> drawBreaker(
                     drawScope, component, scale, pan, isSelected, isDragging, isError, isWarning

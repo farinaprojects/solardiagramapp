@@ -93,6 +93,7 @@ private fun buildPaletteSections(): List<PaletteSectionSpec> = listOf(
     PaletteSectionSpec(
         title = "Proteção e quadros",
         items = listOf(
+            PaletteItemSpec("Rede / Alimentação") { ComponentFactory.gridSource() },
             PaletteItemSpec("QDG / Quadro") { ComponentFactory.qdg() },
             PaletteItemSpec("DPS AC") { ComponentFactory.dpsAc() },
             PaletteItemSpec("Disjuntor Mono") { ComponentFactory.breakerMono(32.0) },

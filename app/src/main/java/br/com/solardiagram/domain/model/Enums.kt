@@ -14,6 +14,7 @@ enum class ComponentType {
     PV_MODULE,
     MICROINVERTER,
     STRING_INVERTER,
+    GRID_SOURCE,
     AC_BUS,
     BARL,
     BARN,

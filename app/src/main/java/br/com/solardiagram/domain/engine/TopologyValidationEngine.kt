@@ -109,6 +109,7 @@ class TopologyValidationEngine {
             ComponentType.PV_MODULE,
             ComponentType.MICROINVERTER,
             ComponentType.STRING_INVERTER,
+            ComponentType.GRID_SOURCE,
             ComponentType.BREAKER,
             ComponentType.QDG,
             ComponentType.LOAD -> port.direction != PortDirection.BIDIRECTIONAL

@@ -71,18 +71,19 @@ class ProjectValidationEngine(
     }
 
     private fun componentTypeRank(type: ComponentType?): Int = when (type) {
-        ComponentType.PV_MODULE -> 0
-        ComponentType.MICROINVERTER -> 1
-        ComponentType.STRING_INVERTER -> 2
-        ComponentType.AC_BUS -> 3
-        ComponentType.BARL -> 4
-        ComponentType.BARN -> 5
-        ComponentType.BARPE -> 6
-        ComponentType.BREAKER -> 7
-        ComponentType.QDG -> 8
-        ComponentType.DPS -> 9
-        ComponentType.GROUND_BAR -> 10
-        ComponentType.LOAD -> 11
-        null -> 12
+        ComponentType.GRID_SOURCE -> 0
+        ComponentType.PV_MODULE -> 1
+        ComponentType.MICROINVERTER -> 2
+        ComponentType.STRING_INVERTER -> 3
+        ComponentType.AC_BUS -> 4
+        ComponentType.BARL -> 5
+        ComponentType.BARN -> 6
+        ComponentType.BARPE -> 7
+        ComponentType.BREAKER -> 8
+        ComponentType.QDG -> 9
+        ComponentType.DPS -> 10
+        ComponentType.GROUND_BAR -> 11
+        ComponentType.LOAD -> 12
+        null -> 13
     }
 }

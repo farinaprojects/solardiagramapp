@@ -132,6 +132,7 @@ object EditorGeometry {
             ComponentType.BARN,
             ComponentType.BARPE -> simpleBarPortWorldPosition(component, port)
             ComponentType.QDG -> qdgPortWorldPosition(component, port)
+            ComponentType.GRID_SOURCE -> qdgPortWorldPosition(component, port)
             ComponentType.BREAKER -> breakerPortWorldPosition(component, port)
             ComponentType.DPS -> dpsPortWorldPosition(component, port)
             ComponentType.GROUND_BAR -> groundPortWorldPosition(component, port)
@@ -203,6 +204,13 @@ object EditorGeometry {
             )
 
             ComponentType.QDG -> Rect(
+                c.x - QDG_W / 2f - PORT_R,
+                c.y - QDG_H / 2f - PORT_R,
+                c.x + QDG_W / 2f + PORT_R,
+                c.y + QDG_H / 2f + PORT_R
+            )
+
+            ComponentType.GRID_SOURCE -> Rect(
                 c.x - QDG_W / 2f - PORT_R,
                 c.y - QDG_H / 2f - PORT_R,
                 c.x + QDG_W / 2f + PORT_R,
@@ -310,6 +318,13 @@ object EditorGeometry {
             )
 
             ComponentType.QDG -> Rect(
+                c.x - QDG_W / 2f - PORT_R,
+                c.y - QDG_H / 2f - PORT_R,
+                c.x + QDG_W / 2f + PORT_R,
+                c.y + QDG_H / 2f + PORT_R
+            )
+
+            ComponentType.GRID_SOURCE -> Rect(
                 c.x - QDG_W / 2f - PORT_R,
                 c.y - QDG_H / 2f - PORT_R,
                 c.x + QDG_W / 2f + PORT_R,

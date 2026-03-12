@@ -188,6 +188,21 @@ object ComponentFactory {
         )
     }
 
+
+    fun gridSource(name: String = "Rede / Alimentação"): Component {
+        val phases = SystemPhase.BI
+        return Component(
+            id = Ids.newId(),
+            type = ComponentType.GRID_SOURCE,
+            name = name,
+            ports = PortSpecCatalog.gridSourcePorts(phases).map(::port),
+            specs = ElectricalSpecs.QdgSpecs(
+                maxBusCurrentA = 100.0,
+                phases = phases
+            )
+        )
+    }
+
     fun qdg(name: String = "QDG / Quadro"): Component {
         val phases = SystemPhase.BI
         return Component(

@@ -19,7 +19,7 @@ object ElectricalComponentSemantics {
             ComponentType.BREAKER -> breakerConnections(node)
 
             ComponentType.QDG -> connectByPhase(node)
-
+            ComponentType.GRID_SOURCE -> connectByPhase(node)
             ComponentType.LOAD,
             ComponentType.PV_MODULE,
             ComponentType.MICROINVERTER,
