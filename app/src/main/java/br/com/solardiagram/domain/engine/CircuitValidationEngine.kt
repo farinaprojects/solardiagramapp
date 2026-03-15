@@ -5,10 +5,12 @@ import br.com.solardiagram.domain.electrical.ElectricalPathFinder
 import br.com.solardiagram.domain.model.Component
 import br.com.solardiagram.domain.model.ComponentType
 import br.com.solardiagram.domain.model.ElectricalPhase
+import br.com.solardiagram.domain.model.ElectricalSpecs
 import br.com.solardiagram.domain.model.PhysicalTerminalRole
 import br.com.solardiagram.domain.model.Port
 import br.com.solardiagram.domain.model.PortDirection
 import br.com.solardiagram.domain.model.PortKind
+import kotlin.math.abs
 
 class CircuitValidationEngine {
 
@@ -19,9 +21,11 @@ class CircuitValidationEngine {
             issues += evaluateSingleTerminal(context, circuit)
             issues += evaluateSemanticEndpoints(context, circuit)
             issues += evaluateFunctionalPath(context, circuit)
+            issues += evaluateProtectionPresence(context, circuit)
+            issues += evaluateCircuitEnvelope(context, circuit)
         }
 
-        return issues
+        return issues.distinctBy { it.id }
     }
 
     private fun evaluateSingleTerminal(
@@ -150,6 +154,76 @@ class CircuitValidationEngine {
         )
     }
 
+    private fun evaluateProtectionPresence(
+        context: ProjectValidationContext,
+        circuit: ElectricalCircuit
+    ): List<ValidationIssue> {
+        if (circuit.loadComponentIds.isEmpty()) return emptyList()
+        if (circuit.currentKind != br.com.solardiagram.domain.model.CurrentKind.AC) return emptyList()
+        if (circuit.protectionComponentIds.isNotEmpty()) return emptyList()
+
+        val firstLoad = circuit.loadComponentIds.firstOrNull() ?: return emptyList()
+        val load = context.component(firstLoad) ?: return emptyList()
+
+        return listOf(
+            ValidationIssue(
+                id = "circuit-unprotected-load-${circuit.id}",
+                severity = Severity.WARNING,
+                code = "CIRCUIT_LOAD_BRANCH_WITHOUT_PROTECTION",
+                message = "Circuito com carga ${load.name} foi identificado sem disjuntor associado no caminho principal. Revise a proteção do ramal antes da carga.",
+                componentId = load.id,
+                category = ValidationCategory.CIRCUIT,
+                componentType = load.type
+            )
+        )
+    }
+
+    private fun evaluateCircuitEnvelope(
+        context: ProjectValidationContext,
+        circuit: ElectricalCircuit
+    ): List<ValidationIssue> {
+        val issues = mutableListOf<ValidationIssue>()
+        if (circuit.loadComponentIds.isEmpty()) return issues
+
+        val breaker = circuit.protectionComponentIds
+            .mapNotNull { context.component(it) }
+            .firstOrNull { it.type == ComponentType.BREAKER }
+
+        val breakerSpecs = breaker?.specs as? ElectricalSpecs.BreakerSpecs
+        val aggregateCurrent = circuit.aggregateCurrentA
+
+        if (breaker != null && breakerSpecs != null && aggregateCurrent != null && aggregateCurrent > breakerSpecs.ratedCurrentA) {
+            issues += ValidationIssue(
+                id = "circuit-breaker-overload-${circuit.id}",
+                severity = if (aggregateCurrent > breakerSpecs.ratedCurrentA * 1.15) Severity.ERROR else Severity.WARNING,
+                code = "CIRCUIT_BREAKER_OVERLOAD",
+                message = "Circuito protegido por ${breaker.name} soma corrente estimada de ${fmt(aggregateCurrent)} A, acima da corrente nominal de ${fmt(breakerSpecs.ratedCurrentA)} A. Revise a divisão de cargas ou a proteção do ramal.",
+                componentId = breaker.id,
+                category = ValidationCategory.CIRCUIT,
+                componentType = breaker.type
+            )
+        }
+
+        val nominalVoltage = circuit.nominalVoltageV
+        circuit.loadComponentIds.forEach { loadId ->
+            val component = context.component(loadId) ?: return@forEach
+            val loadSpecs = component.specs as? ElectricalSpecs.LoadSpecs ?: return@forEach
+            if (nominalVoltage != null && abs(loadSpecs.voltageV - nominalVoltage) > loadSpecs.voltageV * 0.15) {
+                issues += ValidationIssue(
+                    id = "circuit-load-envelope-${circuit.id}-${component.id}",
+                    severity = Severity.WARNING,
+                    code = "CIRCUIT_LOAD_OUTSIDE_ENVELOPE",
+                    message = "Carga ${component.name} está em circuito com envelope nominal aproximado de ${fmt(nominalVoltage)} V, mas sua especificação está em ${fmt(loadSpecs.voltageV)} V. Revise o circuito descoberto e a configuração da carga.",
+                    componentId = component.id,
+                    category = ValidationCategory.CIRCUIT,
+                    componentType = component.type
+                )
+            }
+        }
+
+        return issues
+    }
+
     private fun resolveCircuitTerminalRefs(
         context: ProjectValidationContext,
         circuit: ElectricalCircuit
@@ -223,6 +297,8 @@ class CircuitValidationEngine {
             else -> false
         }
     }
+
+    private fun fmt(value: Double): String = String.format("%.1f", value)
 
     private data class CircuitTerminalRef(
         val component: Component,

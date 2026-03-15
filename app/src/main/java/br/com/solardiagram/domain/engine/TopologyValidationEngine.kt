@@ -4,13 +4,22 @@ import br.com.solardiagram.domain.electrical.ElectricalGraph
 import br.com.solardiagram.domain.model.Component
 import br.com.solardiagram.domain.model.ComponentType
 import br.com.solardiagram.domain.model.DiagramProject
+import br.com.solardiagram.domain.model.ElectricalSpecs
 import br.com.solardiagram.domain.model.Port
 import br.com.solardiagram.domain.model.PortDirection
 import br.com.solardiagram.domain.model.PortKind
+import kotlin.math.abs
 
 class TopologyValidationEngine {
 
     fun evaluate(project: DiagramProject, graph: ElectricalGraph): List<ValidationIssue> {
+        val context = ProjectValidationContext(project = project, graph = graph)
+        return evaluate(context)
+    }
+
+    fun evaluate(context: ProjectValidationContext): List<ValidationIssue> {
+        val project = context.project
+        val graph = context.graph
         val issues = mutableListOf<ValidationIssue>()
 
         project.components.forEach { component ->
@@ -53,7 +62,7 @@ class TopologyValidationEngine {
             ) {
                 val nonProtectiveConnectedPorts = component.ports.count { port ->
                     port.kind != PortKind.PE &&
-                            graph.edgesForNode(graph.nodeId(component.id, port.id)).isNotEmpty()
+                        graph.edgesForNode(graph.nodeId(component.id, port.id)).isNotEmpty()
                 }
 
                 if (nonProtectiveConnectedPorts == 0) {
@@ -80,7 +89,7 @@ class TopologyValidationEngine {
             }
         }
 
-        val graphAnalysis = br.com.solardiagram.domain.electrical.ElectricalGraphAnalyzer.analyze(project, graph)
+        val graphAnalysis = context.graphAnalysis
 
         if (graphAnalysis.sourceComponentIds.isEmpty() && project.components.any { it.type == ComponentType.LOAD }) {
             issues += ValidationIssue(
@@ -117,6 +126,90 @@ class TopologyValidationEngine {
                 componentType = component.type
             )
         }
+
+        val voltageProfile = context.voltageProfile
+
+        voltageProfile.conflictingComponentIds.forEach { componentId ->
+            val component = context.component(componentId) ?: return@forEach
+            issues += ValidationIssue(
+                id = "topo-voltage-conflict-${component.id}",
+                severity = Severity.WARNING,
+                code = "TOPO_VOLTAGE_CONFLICT",
+                message = "Componente ${component.name} recebe tensões nominais conflitantes na malha propagada. Revise fontes, barramentos e compatibilidade entre subsistemas AC/DC.",
+                componentId = component.id,
+                category = ValidationCategory.TOPOLOGY,
+                componentType = component.type
+            )
+        }
+
+        project.components.forEach { component ->
+            when (val specs = component.specs) {
+                is ElectricalSpecs.BreakerSpecs -> {
+                    val aggregateCurrent = context.currentProfile.currentAtComponent(component.id, specs.applicableTo)?.nominalCurrentA
+                    if (aggregateCurrent != null && aggregateCurrent > specs.ratedCurrentA) {
+                        issues += ValidationIssue(
+                            id = "topo-breaker-current-over-${component.id}",
+                            severity = if (aggregateCurrent > specs.ratedCurrentA * 1.15) Severity.ERROR else Severity.WARNING,
+                            code = "TOPO_BREAKER_AGGREGATE_CURRENT_EXCEEDED",
+                            message = "Disjuntor ${component.name} está atravessado por corrente agregada estimada de ${fmt(aggregateCurrent)} A, acima da corrente nominal de ${fmt(specs.ratedCurrentA)} A. Revise a topologia do ramal e o dimensionamento da proteção.",
+                            componentId = component.id,
+                            category = ValidationCategory.TOPOLOGY,
+                            componentType = component.type
+                        )
+                    }
+                }
+
+                is ElectricalSpecs.QdgSpecs -> {
+                    val aggregateCurrent = context.currentProfile.currentAtComponent(component.id, br.com.solardiagram.domain.model.CurrentKind.AC)?.nominalCurrentA
+                    if (aggregateCurrent != null && aggregateCurrent > specs.maxBusCurrentA) {
+                        issues += ValidationIssue(
+                            id = "topo-qdg-current-over-${component.id}",
+                            severity = if (aggregateCurrent > specs.maxBusCurrentA * 1.15) Severity.ERROR else Severity.WARNING,
+                            code = "TOPO_QDG_AGGREGATE_CURRENT_EXCEEDED",
+                            message = "QDG ${component.name} concentra corrente agregada estimada de ${fmt(aggregateCurrent)} A, acima da capacidade nominal de barramento de ${fmt(specs.maxBusCurrentA)} A. Revise a distribuição dos ramais e a capacidade do quadro.",
+                            componentId = component.id,
+                            category = ValidationCategory.TOPOLOGY,
+                            componentType = component.type
+                        )
+                    }
+                }
+
+                is ElectricalSpecs.AcBusSpecs -> {
+                    val aggregateCurrent = context.currentProfile.currentAtComponent(component.id, br.com.solardiagram.domain.model.CurrentKind.AC)?.nominalCurrentA
+                    if (aggregateCurrent != null && aggregateCurrent > specs.maxBusCurrentA) {
+                        issues += ValidationIssue(
+                            id = "topo-bus-current-over-${component.id}",
+                            severity = if (aggregateCurrent > specs.maxBusCurrentA * 1.15) Severity.ERROR else Severity.WARNING,
+                            code = "TOPO_AC_BUS_AGGREGATE_CURRENT_EXCEEDED",
+                            message = "Barramento ${component.name} concentra corrente agregada estimada de ${fmt(aggregateCurrent)} A, acima da capacidade nominal de ${fmt(specs.maxBusCurrentA)} A. Revise o agrupamento de circuitos e a capacidade do barramento.",
+                            componentId = component.id,
+                            category = ValidationCategory.TOPOLOGY,
+                            componentType = component.type
+                        )
+                    }
+                }
+
+                else -> Unit
+            }
+        }
+
+        project.components
+            .filter { it.type == ComponentType.LOAD }
+            .forEach { component ->
+                val loadSpecs = component.specs as? ElectricalSpecs.LoadSpecs ?: return@forEach
+                val propagated = voltageProfile.nominalVoltageAtComponent(component.id) ?: return@forEach
+                if (abs(propagated - loadSpecs.voltageV) > loadSpecs.voltageV * 0.15) {
+                    issues += ValidationIssue(
+                        id = "topo-load-voltage-mismatch-${component.id}",
+                        severity = Severity.WARNING,
+                        code = "TOPO_LOAD_VOLTAGE_MISMATCH",
+                        message = "Carga ${component.name} está configurada para ${fmt(loadSpecs.voltageV)} V, mas a malha propagada indica aproximadamente ${fmt(propagated)} V. Verifique a topologia e a tensão nominal do circuito.",
+                        componentId = component.id,
+                        category = ValidationCategory.TOPOLOGY,
+                        componentType = component.type
+                    )
+                }
+            }
 
         val groups = graphAnalysis.componentGroups
         if (groups.size > 1) {
@@ -161,4 +254,6 @@ class TopologyValidationEngine {
             ComponentType.GROUND_BAR -> false
         }
     }
+
+    private fun fmt(value: Double): String = String.format("%.1f", value)
 }

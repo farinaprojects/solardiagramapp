@@ -2,10 +2,15 @@ package br.com.solardiagram.domain.engine
 
 import br.com.solardiagram.domain.electrical.ElectricalCircuit
 import br.com.solardiagram.domain.electrical.ElectricalCircuitAnalyzer
+import br.com.solardiagram.domain.electrical.ElectricalCircuitDiscoveryEngine
 import br.com.solardiagram.domain.electrical.ElectricalEdge
 import br.com.solardiagram.domain.electrical.ElectricalFlow
+import br.com.solardiagram.domain.electrical.ElectricalCurrentBackPropagationEngine
+import br.com.solardiagram.domain.electrical.ElectricalCurrentProfile
 import br.com.solardiagram.domain.electrical.ElectricalGraphAnalysis
 import br.com.solardiagram.domain.electrical.ElectricalGraphAnalyzer
+import br.com.solardiagram.domain.electrical.ElectricalVoltageProfile
+import br.com.solardiagram.domain.electrical.ElectricalVoltagePropagationEngine
 import br.com.solardiagram.domain.electrical.ElectricalFlowAnalyzer
 import br.com.solardiagram.domain.electrical.ElectricalFlowCalculation
 import br.com.solardiagram.domain.electrical.ElectricalGraph
@@ -87,7 +92,13 @@ data class ProjectValidationContext(
     }
 
     val circuits: List<ElectricalCircuit> by lazy {
-        ElectricalCircuitAnalyzer.analyze(graph)
+        ElectricalCircuitDiscoveryEngine.discover(
+            project = project,
+            graph = graph,
+            flows = flows,
+            currentProfile = currentProfile,
+            voltageProfile = voltageProfile
+        )
     }
 
     val flows: List<ElectricalFlow> by lazy {
@@ -100,6 +111,14 @@ data class ProjectValidationContext(
 
     val protections: List<ElectricalProtection> by lazy {
         ElectricalProtectionAnalyzer.analyze(project, graph, flows, installation)
+    }
+
+    val voltageProfile: ElectricalVoltageProfile by lazy {
+        ElectricalVoltagePropagationEngine.propagate(project, graph, graphAnalysis)
+    }
+
+    val currentProfile: ElectricalCurrentProfile by lazy {
+        ElectricalCurrentBackPropagationEngine.propagate(project, graph, flows, voltageProfile)
     }
 
     val calculations: Map<String, ElectricalFlowCalculation> by lazy {

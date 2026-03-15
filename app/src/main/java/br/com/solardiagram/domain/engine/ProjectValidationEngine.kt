@@ -26,7 +26,7 @@ class ProjectValidationEngine(
 
         val issues = buildList {
             addAll(structuralEngine.evaluate(project))
-            addAll(topologyEngine.evaluate(project, graph))
+            addAll(topologyEngine.evaluate(context))
             addAll(circuitEngine.evaluate(context))
             addAll(protectionEngine.evaluate(context))
             addAll(protectionTechnicalEngine.evaluate(context))
