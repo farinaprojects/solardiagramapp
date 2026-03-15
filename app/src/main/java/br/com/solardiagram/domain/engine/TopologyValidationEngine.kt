@@ -80,7 +80,45 @@ class TopologyValidationEngine {
             }
         }
 
-        val groups = graph.connectedComponentGroups()
+        val graphAnalysis = br.com.solardiagram.domain.electrical.ElectricalGraphAnalyzer.analyze(project, graph)
+
+        if (graphAnalysis.sourceComponentIds.isEmpty() && project.components.any { it.type == ComponentType.LOAD }) {
+            issues += ValidationIssue(
+                id = "topo-no-source-project",
+                severity = Severity.WARNING,
+                code = "TOPO_NO_ACTIVE_SOURCE",
+                message = "O diagrama possui cargas, mas nenhuma origem elétrica ativa foi identificada. Adicione rede, microinversor, inversor string ou alimentação equivalente.",
+                category = ValidationCategory.TOPOLOGY
+            )
+        }
+
+        graphAnalysis.unreachableLoadComponentIds.forEach { componentId ->
+            val component = project.components.firstOrNull { it.id == componentId } ?: return@forEach
+            issues += ValidationIssue(
+                id = "topo-load-unreachable-${component.id}",
+                severity = Severity.WARNING,
+                code = "TOPO_LOAD_NOT_REACHABLE_FROM_SOURCE",
+                message = "Carga ${component.name} não está eletricamente alcançável a partir de nenhuma fonte do diagrama. Verifique barramentos, disjuntores e continuidade do circuito.",
+                componentId = component.id,
+                category = ValidationCategory.TOPOLOGY,
+                componentType = component.type
+            )
+        }
+
+        graphAnalysis.unreachableGenerationComponentIds.forEach { componentId ->
+            val component = project.components.firstOrNull { it.id == componentId } ?: return@forEach
+            issues += ValidationIssue(
+                id = "topo-generation-unreachable-${component.id}",
+                severity = Severity.INFO,
+                code = "TOPO_GENERATION_ISLAND",
+                message = "Fonte de geração ${component.name} não alcança nenhuma malha alimentada principal. Verifique se o equipamento está integrado ao barramento, quadro ou ponto de exportação.",
+                componentId = component.id,
+                category = ValidationCategory.TOPOLOGY,
+                componentType = component.type
+            )
+        }
+
+        val groups = graphAnalysis.componentGroups
         if (groups.size > 1) {
             groups.drop(1).forEachIndexed { index, group ->
                 val sample = project.components.firstOrNull { it.id in group } ?: return@forEachIndexed

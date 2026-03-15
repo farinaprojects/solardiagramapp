@@ -4,6 +4,8 @@ import br.com.solardiagram.domain.electrical.ElectricalCircuit
 import br.com.solardiagram.domain.electrical.ElectricalCircuitAnalyzer
 import br.com.solardiagram.domain.electrical.ElectricalEdge
 import br.com.solardiagram.domain.electrical.ElectricalFlow
+import br.com.solardiagram.domain.electrical.ElectricalGraphAnalysis
+import br.com.solardiagram.domain.electrical.ElectricalGraphAnalyzer
 import br.com.solardiagram.domain.electrical.ElectricalFlowAnalyzer
 import br.com.solardiagram.domain.electrical.ElectricalFlowCalculation
 import br.com.solardiagram.domain.electrical.ElectricalGraph
@@ -79,6 +81,10 @@ data class ProjectValidationContext(
 ) {
     private val componentsById = project.components.associateBy { it.id }
     private val connectionsById = project.connections.associateBy { it.id }
+
+    val graphAnalysis: ElectricalGraphAnalysis by lazy {
+        ElectricalGraphAnalyzer.analyze(project, graph)
+    }
 
     val circuits: List<ElectricalCircuit> by lazy {
         ElectricalCircuitAnalyzer.analyze(graph)
